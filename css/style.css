@@ -1,3 +1,7 @@
+/* Website CSS */
+p { font-family: 'Questrial', sans-serif; }
+
+
 /* HTML5 Boilerplate  */
 
 article, aside, details, figcaption, figure, footer, header, hgroup, nav, section { display: block; }
