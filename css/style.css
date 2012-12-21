@@ -1,6 +1,7 @@
 /* Website CSS */
-p { font-family: 'Questrial', sans-serif; font-size: 16px }
-h1, h2, h3 { font-family: 'Crete Round', serif; }
+p, li { font-family: 'Georgia', sans-serif; font-size: 16px }
+h1, h2, h3 { font-family: 'Lato', sans-serif; font-weight: 900 }
+.light { font-weight: 100 }
 #maincolumn { margin: 0px auto; width: 640px }
 
 /* HTML5 Boilerplate  */
