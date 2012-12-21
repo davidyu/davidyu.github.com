@@ -1,8 +1,12 @@
 /* Website CSS */
 p, li { font-family: 'Georgia', sans-serif; font-size: 16px }
 h1, h2, h3 { font-family: 'Lato', sans-serif; font-weight: 900 }
-.light { font-weight: 100 }
+#maintitle { font-size:4em; font-weight: 900; margin:0; padding:0 }
+#subtitle { font-family: 'Lato', sans-serif; font-size:16px; font-weight:400; margin:0; padding:0  }
+.light { font-weight: 300 }
+.nomargin { margin: 0 }
 #maincolumn { margin: 0px auto; width: 640px }
+#mainheader { margin: 0px auto; width: 640px; text-align: center; padding-bottom:2em }
 
 /* HTML5 Boilerplate  */
 

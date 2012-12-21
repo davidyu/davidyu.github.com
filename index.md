@@ -2,8 +2,6 @@ I am a senior Computer Science student at Yale University. Currently, I'm intere
 related to compilers and operating systems, and in working on real-time applications in
 computer graphics. Video game design and implementation fascinate me.
 
-Resume
-
 Work and Projects
 =================
 
