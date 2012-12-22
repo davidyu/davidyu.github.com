@@ -8,15 +8,15 @@ Work and Projects
 Games
 -----
 
-* Project Jumpman: a prototype of a local co-op physics-based platformer
-* Q-bert: a pared-down clone of Q-bert
-* Exorcist (7th ToJAM): a pretty cool local versus game about escaping a mine shaft
+* Project Jumpman: prototype of a local co-op physics-based platformer
+* Q-bert: pared-down clone of Q-bert
+* Exorcist (7th ToJAM): a multiplayer competitive game about escaping a mine shaft
 in co-operation with DreamyCactus
 
 School
 ------
 
-* TCP Reno: an implementation of reliable transport over the Java Fishnet network simulator
-* Tiger Compiler: a fully-featured compiler for the Tiger toy programming language
+* TCP Reno: implementation of reliable transport over the Fishnet network simulator
+* Tiger Compiler: fully-featured compiler for the Tiger toy programming language
 * Raytracer: a raytracer
-* Stroboscopik: a neat prototype of a decentralized and synchronized strobing app for Android devices.
+* Stroboscopik: prototype of a semi-decentralized strobing app for Android devices
