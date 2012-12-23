@@ -1,4 +1,5 @@
-<h1 id="maintitle">DAVID <span class="light">YU</span></h1>
-<p id="subtitle">
-Undergraduate at Yale University<br/>
-Resume ∙ Linkedin ∙ Github</p>
+<p class="linkdivider">
+    <span class="classybrace">{</span>
+    <span class="prolinks">Resume ∙ Linkedin ∙ Github</span>
+    <span class="classybrace">}</span>
+</p>

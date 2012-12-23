@@ -1,22 +1,31 @@
-I am a senior Computer Science student at Yale University. Currently, I'm interested in topics
-related to compilers and operating systems, and in working on real-time applications in
-computer graphics. Video game design and implementation fascinate me.
+<h1 id="maintitle">My Name is David</h1>
+and I am a senior majoring in Computer Science at Yale University. Right now,
+I'm interested in topics related to compilers and operating systems, and in
+working on real-time applications in computer graphics. Video game design and
+implementation fascinate me.
 
-Work and Projects
-=================
+<p class="linkdivider">
+    <span class="classybrace">{</span>
+    <span class="prolinks"><a href="uploads/resume.pdf">Resume</a> ∙ <a href="http://www.linkedin.com/profile/view?id=57377115">Linkedin</a> ∙ <a href="http://github.com/desktop">Github</a></span>
+    <span class="classybrace">}</span>
+</p>
+<p><br/></p>
 
-Games
------
+Projects I've worked on
+========================
 
-* Project Jumpman: prototype of a local co-op physics-based platformer
-* Q-bert: pared-down clone of Q-bert
-* Exorcist (7th ToJAM): a multiplayer competitive game about escaping a mine shaft
-in co-operation with DreamyCactus
+<p class="indent"><strong>Jumpman</strong>: (prototype) local co-op physics-based platformer <br />
+<strong>Qubert</strong>: pared-down clone of Q-bert <br />
+<strong>Exorcist</strong>: (Game Jam) local competitive game about escaping a mine shaft <br />
+<strong>TCP Reno</strong>: reliable transport over Fishnet network simulator <br />
+<strong>TC</strong>: fully-featured compiler for the Tiger toy programming language <br />
+<strong>Raytracer</strong>: ...a raytracer <br />
+<strong>Stroboscopik</strong>: (prototype) semi-decentralized strobing on Android</p>
 
-School
-------
+<p class="divider">∙∙∙</p>
 
-* TCP Reno: implementation of reliable transport over the Fishnet network simulator
-* Tiger Compiler: fully-featured compiler for the Tiger toy programming language
-* Raytracer: a raytracer
-* Stroboscopik: prototype of a semi-decentralized strobing app for Android devices
+I'm currently working on
+=====================
+
+<p class="indent">
+<strong>Artemis</strong>: porting the Artemis Entity Systems framework to haXe</p>
