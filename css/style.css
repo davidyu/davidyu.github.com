@@ -1,16 +1,36 @@
 /* Website CSS */
-p, li { font-family: 'Open Sans', sans-serif; font-weight:300; font-size: 18px; margin:0; padding:0 }
-h1 { font-family: 'Open Sans', sans-serif; font-weight: 700; font-style:italic }
+p, li { font-family: Georgia, serif; font-weight:100; font-size: 16px; margin:0; padding:0 }
+h1 { font-weight: 700;  }
 h2, h3 { font-family: 'Lato', sans-serif; font-weight: 300 }
-#maintitle { font-size:3em; font-weight: 800; margin:0; margin-bottom:0.3em; padding:0 }
-#subtitle { font-family: 'Lato', sans-serif; font-size:16px; font-weight:400; margin:0; padding:0  }
+
+.maintitle { 
+    font-family: 'Libre Baskerville', Georgia, serif;
+    font-size:3em;
+    font-weight: 800;
+    line-height:1em;
+    margin:0;
+    padding:0
+}
+
+.mainsubtitle {
+    font-family: 'Libre Baskerville', Georgia, serif;
+    font-size:1.5em;
+    font-weight: 800;
+    margin:0;
+    padding:0
+}
+
+.vspace {
+    line-height: 1em;
+}
+.subtitle { font-family: 'Lato', sans-serif; font-size:2em; font-weight:400; margin:0; padding:0  }
 .light { font-weight: 300 }
 .prolinks { position:relative; top:7px; padding: 0 5px }
 .classybrace{ font-family:Playfair Display SC; height:23px !important; font-size:4em; vertical-align:middle;  }
 .linkdivider { text-align:center; margin:2em auto; padding:0 }
 .divider { font-family: sans-serif; font-size: 4em; margin:20px 0; text-align:center; }
 .indent {padding-left: 15px; line-height:1.7em}
-#maincolumn { margin: 0px auto; width: 640px; padding: 0; padding-top:4em}
+#maincolumn { margin: 0px auto; width: 580px; padding: 0; padding-top:4em}
 #mainheader { margin: 0px auto; width: 640px; text-align:center;  }
 .nomargin { text-align:center; margin:0; padding:0 }
 
