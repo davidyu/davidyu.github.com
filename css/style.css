@@ -12,6 +12,22 @@ h2, h3 { font-family: 'Lato', sans-serif; font-weight: 300 }
     padding:0
 }
 
+.section-heading { 
+    font-family: 'Libre Baskerville', Georgia, serif;
+    font-size:2em;
+    font-weight: 600;
+    line-height:1em;
+    margin:0;
+    padding:0
+}
+
+.section-subheading {
+    font-family: 'Libre Baskerville', Georgia, serif;
+    font-size:1em;
+    font-weight: 800;
+    margin:0;
+    padding:0
+}
 .mainsubtitle {
     font-family: 'Libre Baskerville', Georgia, serif;
     font-size:1.5em;
