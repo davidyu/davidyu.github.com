@@ -1,0 +1,43 @@
+A blueprint of the next-generation dialog system.
+
+Players can interject midway through a sentence or wait long after the other person has finished
+their line. How does this work? A dialog choice appears at certain intervals:
+
+Why is it cool?
+
+It naturally implements cadence to video game dialogs. Usually, this is achieved through linear
+dialogues, where you don't have any control.
+
+Any cons?
+
+It's expensive in terms of man-hours. In addition to the stress on a writer, structure
+is important to any script. Branching and interruptions can seriously tamper with the quality of the
+structure in any dialog.
+
+// KILLER FEATURE
+* Should allow players to interject midway through a sentence or wait long after the other person has finished speaking.
+KILLER FEATURE //
+
+* Dialog-branch-independent reactions and responses. Pseudorandomness.
+* Freeform responses (EG: typing your own response) to augment choosing from a list of prewritten responses.
+
+        Certain responses are only available in a predefined time window.
+        They pop in and pop out (perhaps slightly fade-in and out) 
+        And you can select one with your cursor/keypress/gamepad
+
+* Combine and matching dialog options. You needn't just choose one.
+    Rethink this. This doesn't seem like an ideal design: what about
+    dialog optiosn that can't be combined with another?
+
+Potential dialog scenarios
+==========================
+
+Code to rewrite history.
+Worldwide conspiracy.
+Supernatural.
+Hacker culture.
+
+==============
+Follow-up work
+
+Study of commercial/AAA/indie dialog systems
