@@ -1,18 +1,43 @@
 A blueprint of the next-generation dialog system.
 
+This is not an original idea (ideas rarely are). It's used to great effect in Ace Attourney.
+
 Players can interject midway through a sentence or wait long after the other person has finished
 their line. How does this work? A dialog choice appears at certain intervals:
 
 Why is it cool?
 
-It naturally implements cadence to video game dialogs. Usually, this is achieved through linear
-dialogues, where you don't have any control.
+This naturally implements cadence to video game dialogs. Usually, this is achieved through linear
+dialogs or cutscenes, where you don't have any control. This implements cadence with interactivity.
+
+As you'll see, it's also fun because you're exploring the character you play in a new kind of way.
+Often in games, you make choices about what kind of character you are: evil or good; chaotic or lawful,
+but rarely do you ever chance upon choosing between an impatient vs a calm and thoughtful character.
+Those are often written in the script, which, though it works, is one step removed from actually
+choosing how your character reacts.
 
 Any cons?
 
-It's expensive in terms of man-hours. In addition to the stress on a writer, structure
-is important to any script. Branching and interruptions can seriously tamper with the quality of the
-structure in any dialog.
+It's expensive in terms of man-hours. In addition to a whole new level of constraints placed on a writer,
+structure is important to any script. Branching on interjections can seriously tamper with the quality of the
+structure in any dialog. It just makes it harder.
+
+A quick prototype:
+
+Future work:
+
+Write full-fledged scenarios with this dialog system.
+Use it for a comedic scene, a dark, emotional scene, and an action scene.
+Use it! I would love to see a system like this be implemented in a game.
+I'm not particularly fond of the code, but it's a prototype. I encourage anyone to build on this, rewrite it,
+and make it better.
+
+Things I learned
+
+Struture is such an important part of writing a screenplay. Screenwriting is also such an interesting
+process that I've become interested in it.
+
+Contact me at lewen.yu@gmail.com
 
 // KILLER FEATURE
 * Should allow players to interject midway through a sentence or wait long after the other person has finished speaking.
