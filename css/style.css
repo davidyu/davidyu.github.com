@@ -61,8 +61,8 @@ html { font-size: 100%; -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 10
 html, button, input, select, textarea { font-family: sans-serif; color: #222; }
 body { background: #E9FDFB; margin: 0; font-size: 1em; line-height: 1.4; }
 
-::-moz-selection { background: #fe57a1; color: #fff; text-shadow: none; }
-::selection { background: #fe57a1; color: #fff; text-shadow: none; }
+::-moz-selection { background: #D3F2F7; color: #000; text-shadow: none; }
+::selection { background: #D3F2F7; color: #000; text-shadow: none; }
 
 a { color: #000000; }
 a:visited { color: #555555; }
