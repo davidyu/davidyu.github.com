@@ -1,7 +1,7 @@
 /* Website CSS */
-p, li { font-family: Georgia, serif; font-weight:100; font-size: 16px; margin:0; padding:0 }
+p, li { font-family: Lato, sans-serif; font-weight: 300; font-size: 16px; margin:0; padding:0; color:#fff }
 h1 { font-weight: 700;  }
-h2, h3 { font-family: 'Lato', sans-serif; font-weight: 300 }
+h2, h3, h4, h5, h6 { font-family: Sintony, sans-serif; font-weight: 400; color: #fff }
 
 .maintitle { 
     font-family: 'Libre Baskerville', Georgia, serif;
@@ -44,7 +44,7 @@ h2, h3 { font-family: 'Lato', sans-serif; font-weight: 300 }
 .prolinks { position:relative; top:7px; padding: 0 5px }
 .classybrace{ font-family:Playfair Display SC; height:23px !important; font-size:4em; vertical-align:middle;  }
 .linkdivider { text-align:center; margin:2em auto; padding:0 }
-.divider { font-family: sans-serif; font-size: 4em; margin:20px 0; text-align:center; }
+.divider { font-family: sans-serif; font-weight: 100; font-size: 4em; margin:20px 0; text-align:center; }
 .indent {padding-left: 15px; line-height:1.7em}
 #maincolumn { margin: 0px auto; width: 580px; padding: 0; padding-top:4em}
 #mainheader { margin: 0px auto; width: 640px; text-align:center;  }
@@ -64,9 +64,9 @@ body { background: #000; margin: 0; font-size: 1em; line-height: 1.4; }
 ::-moz-selection { background: #D3F2F7; color: #fff; text-shadow: none; }
 ::selection { background: #D3F2F7; color: #fff; text-shadow: none; }
 
-a { color: #000000; }
-a:visited { color: #555555; }
-a:hover { color: #777777; }
+a { color: #B2EEFF; }
+a:visited { color: #D3F2F7; }
+a:hover { color: #D3F2F7; }
 a:focus { outline: thin dotted; }
 a:hover, a:active { outline: 0; }
 abbr[title] { border-bottom: 1px dotted; }
