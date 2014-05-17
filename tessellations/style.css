@@ -1,0 +1,19 @@
+/* site */
+p, li { font-family: Lato, sans-serif; font-weight: 300; font-size: 16px; margin:0; padding:0; color:#000 }
+h1 { font-weight: 700;  }
+h2, h3, h4, h5, h6 { font-family: Sintony, sans-serif; font-weight: 400; color: #000 }
+body { background: #fff; margin: 0; font-size: 1em; line-height: 1.4; }
+ul { list-style-type: none }
+
+.vspace {
+    line-height: 1em;
+}
+
+/* game */
+#screen { width:400px; height:400px; margin: 50px auto auto auto }
+text { font-size: 10pt; color:#fff; margin: 0; padding: 0 }
+.guide text { font-size: 7pt; color:#000; margin: 0; padding: 0 }
+
+/* boilerplate */
+::-moz-selection { background: #4BF920; color: #fff; text-shadow: none; }
+::selection { background: #4BF920; color: #fff; text-shadow: none; }

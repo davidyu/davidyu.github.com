@@ -69,29 +69,10 @@ floodAcquire = function( start, id ) {
 draw = function() {
   screen.clear();
 
-  // draw cell margin guides
-  for ( var x = 0; x < gridw; x++ ) {
-    var guide = screen.group()
-                      .transform( { x: ( x + 1 ) * cellw, y : 0 } )
-                      .attr( { class : "guide" } );
-
-    var text = guide.plain( x ).fill( { color: "#00" } )
-                    .transform( { x: cellw / 2, y: cellh / 2 } );
-  }
-
-  for ( var y = 0; y < gridh; y++ ) {
-    var guide = screen.group()
-                      .transform( { x: 0, y : ( y + 1 ) * cellh } )
-                      .attr( { class : "guide" } );
-
-    var text = guide.plain( y ).fill( { color: "#00" } )
-                    .transform( { x: cellw / 2, y: cellh / 2 } );
-  }
-
   // draw cells
   grid.forEach( function( e, i ) {
     var cell = screen.group()
-                     .transform( { x: ( i % gridw + 1 ) * cellw, y : ( Math.floor( i / gridw ) + 1 ) * cellh } );
+                     .transform( { x: ( i % gridw ) * cellw, y : ( Math.floor( i / gridw ) ) * cellh } );
 
     cell.rect( cellw, cellh )
         .attr( { fill : colorizer.fromValue( grid[i] ) } )
