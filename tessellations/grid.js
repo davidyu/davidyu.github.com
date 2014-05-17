@@ -1,8 +1,10 @@
 var grid = [];
 var gridRep = [];
-var cellw = 50;
-var cellh = 50;
+var cellw = 100;
+var cellh = 100;
+var maxval = 4;
 var screen = null;
+var activeCells = 0;
 
 var selected = [];
 
@@ -13,12 +15,12 @@ colorizer = (function() { // declare everything discreetly
 
   colorizer.fromValue = function( v ) {
     if ( v < 0 ) return chroma('white').hex();
-    else         return this.scale( v / 10 ).hex();
+    else         return this.scale( v / 9 ).hex();
   }
 
   colorizer.highlightFromValue = function( v ) {
     if ( v < 0 ) return chroma('white').hex();
-    else         return this.scale( v / 10 ).brighter().hex();
+    else         return this.scale( v / 9 ).brighter().hex();
   }
 
   return colorizer;
@@ -126,13 +128,26 @@ update = function() {
   } );
 }
 
+advance = function() {
+  cellw = Math.round( cellw * 0.8 );
+  cellh = Math.round( cellh * 0.8 );
+  maxval++;
+  init();
+}
+
 prune = function( start ) {
   // see if we should delete this cell and surrounding cells
   var targets = floodAcquire( { x: start.x, y: start.y }, grid.get( start.x, start.y ) )
-  if ( targets.length >= grid.get( start.x, start.y ) ) {
+  if ( targets.length == grid.get( start.x, start.y ) ) {
     targets.forEach( function( cell ) {
       grid[ cell.x + cell.y * gridw ] = -1;
+      activeCells--;
+      console.log( activeCells );
     } );
+  }
+  if ( activeCells == 0 ) {
+    alert( "great job, you won!" );
+    advance();
   }
 }
 
@@ -297,21 +312,69 @@ pollKey = function( e ) {
 }
 
 init = function() {
-  screen = SVG( 'screen' ).size( 500, 500 );
+  if ( screen == null )
+    screen = SVG( 'screen' ).size( 500, 500 );
 
   gridw = Math.floor( screen.width() / cellw ) - 1;
   gridh = Math.floor( screen.height() / cellh ) - 1;
 
+  console.log( "new grid size is " + gridw + " " + gridh );
+
+  var tiles = [];
+
+  grid = [];
+
   // set up grid
   for ( i = 0; i < gridw * gridh; i++ ) {
-    grid.push( Math.round( Math.random() * 8 + 2 ) );
+    var val = Math.round( Math.random() * ( maxval - 2 ) + 2 );
+    grid.push( val );
+    if ( tiles[ val ] == null ) {
+      tiles[ val ] = 0;
+    }
+    tiles[ val ]++;
   }
 
   // delete random elements
   for ( i = 0; i < screen.width() / cellw * screen.height() / cellh; i++ ) {
     if ( Math.random() > 0.4 ) {
-      grid[i] = -1;
+      if ( tiles[ grid[i] ] > grid[i] ) {
+        tiles[ grid[i] ]--;
+        grid[i] = -1;
+      }
     }
+  }
+
+  // delete necessary elements
+  for ( i = 2; i <= maxval; i++ ) {
+    if ( tiles[i] > i ) {
+      var count = tiles[i];
+      for ( j = 0; j < gridw * gridh && tiles[i] > i; j++ ) {
+        if ( grid[j] == i ) {
+          grid[j] = -1;
+          tiles[i]--;
+        }
+      }
+    }
+  }
+
+  // add necessary elements
+  for ( i = 2; i <= maxval; i++ ) {
+    if ( tiles[i] < i ) {
+      var count = tiles[i];
+      while ( tiles[i] < i ) {
+        var randIndex = Math.round( Math.random() * gridw * gridh );
+        if ( grid[ randIndex ] == -1 ) {
+          grid[ randIndex ] = i;
+          tiles[i]++;
+        }
+      }
+    }
+  }
+
+  // count active cells
+  activeCells = 0;
+  for ( i = 2; i <= maxval; i++ ) {
+    activeCells += tiles[i];
   }
 
   grid.get = function( x, y ) {
