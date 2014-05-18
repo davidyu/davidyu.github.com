@@ -87,7 +87,7 @@ draw = function() {
           }
         );
 
-    Hammer( document.getElementById( 'cell' + i ), { preventDefault: true } ).on( "dragstart", function( e ) {
+    Hammer( document.getElementById( 'cell' + i ), { preventDefault: true } ).on( "dragstart swipestart", function( e ) {
         target = { x: i % gridw, y: Math.floor( i / gridw ) };
         selected = floodAcquire( target, grid.get( target.x, target.y ) );
       }
@@ -374,7 +374,7 @@ init = function() {
 
   draw();
 
-  Hammer( document.getElementById( 'screen' ), { preventDefault: true } ).on( "dragend", pollDrag );
+  Hammer( document.getElementById( 'screen' ), { preventDefault: true } ).on( "dragend swipeend", pollDrag );
 
   document.onkeydown = pollKey;
 }
