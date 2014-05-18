@@ -75,7 +75,8 @@ draw = function() {
                      .transform( { x: ( i % gridw ) * cellw, y : ( Math.floor( i / gridw ) ) * cellh } );
 
     cell.rect( cellw, cellh )
-        .attr( { fill : colorizer.fromValue( grid[i] ) } )
+        .attr( { fill : colorizer.fromValue( grid[i] ),
+                 id   : 'cell' + i } )
         .mouseover(
           function() {
             this.fill( { color: colorizer.highlightFromValue( grid[i] ) } );
@@ -84,14 +85,13 @@ draw = function() {
           function() {
             this.fill( { color: colorizer.fromValue( grid[i] ) } );
           }
-        )
-        .mousedown(
-          function() {
-            target = { x: i % gridw, y: Math.floor( i / gridw ) };
-            selected = floodAcquire( target, grid.get( target.x, target.y ) );
-            console.log( selected );
-          }
         );
+
+    Hammer( document.getElementById( 'cell' + i ), { preventDefault: true } ).on( "dragstart", function( e ) {
+        target = { x: i % gridw, y: Math.floor( i / gridw ) };
+        selected = floodAcquire( target, grid.get( target.x, target.y ) );
+      }
+    );
 
     var text = cell.plain( e > 0 ? e.toString() : "" )
                    .fill( { color: '#ffffff' } )
@@ -112,7 +112,13 @@ update = function() {
 advance = function() {
   cellw = Math.round( cellw * 0.8 );
   cellh = Math.round( cellh * 0.8 );
-  maxval++;
+
+  if ( cellw > 70 ) {
+    maxval++;
+  } else {
+    maxval += 2;
+  }
+
   init();
 }
 
@@ -133,6 +139,11 @@ prune = function( start ) {
 }
 
 pollDrag = function( e ) {
+  if ( selected == null || selected.length == 0 ) {
+    console.log( "nothing selected" );
+    return;
+  }
+
   var up    = false,
       down  = false,
       left  = false,
@@ -304,6 +315,9 @@ init = function() {
   var tiles = [];
 
   grid = [];
+  grid.get = function( x, y ) {
+    return y >= 0 && x >= 0 && x < gridw && y < gridh ? this[y * gridw + x] : -2;
+  }
 
   // set up grid
   for ( i = 0; i < gridw * gridh; i++ ) {
@@ -356,10 +370,6 @@ init = function() {
   activeCells = 0;
   for ( i = 2; i <= maxval; i++ ) {
     activeCells += tiles[i];
-  }
-
-  grid.get = function( x, y ) {
-    return y >= 0 && x >= 0 && x < gridw && y < gridh ? this[y * gridw + x] : -2;
   }
 
   draw();
