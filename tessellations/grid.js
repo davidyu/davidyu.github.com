@@ -1,26 +1,54 @@
 var grid = [];
 var gridRep = [];
-var cellw = 100;
-var cellh = 100;
+var cellw = 120;
+var cellh = 120;
 var maxval = 4;
 var screen = null;
 var activeCells = 0;
+var level = 1;
+var fastdebug = false;
 
 var selected = [];
+
+var TileType = {
+  OUT_OF_BOUNDS : "$",
+  EMPTY         : ".",
+  REGULAR       : "*",
+  CONCRETE      : "#",
+  DEACTIVATED   : "`",
+  LAVA          : "L",
+}
+
+// weird to do this, but I want to instantiate this object array/hash with TileType vals
+// and I can't do that in the constructor like above, because JavaScript doesn't like periods
+// in its initializers.
+enabled = (function() {
+  this[ TileType.LAVA ] = false;
+  return this;
+})();
+
+var Tile = function( t, v ) {
+  this.type = t;
+  this.value = v;
+  return this;
+}
 
 colorizer = (function() { // declare everything discreetly
   var colorizer = {};
 
-  colorizer.scale = chroma.scale( [ '#4BF920', '#1DE5A2', '#48CC20', '#18BC49', '#0DAD6D' ] );
+  colorizer.scale                         = {};
+  colorizer.scale[ TileType.REGULAR ]     = chroma.scale( [ '#4BF920', '#1DE5A2', '#48CC20', '#18BC49', '#0DAD6D' ] );
+  colorizer.scale[ TileType.LAVA ]        = chroma.scale( [ '#AE5750', '#F96541', '#FF7939' ] );
+  colorizer.scale[ TileType.DEACTIVATED ] = chroma.scale( [ '#64585A', '#64585A' ] );
 
-  colorizer.fromValue = function( v ) {
-    if ( v < 0 ) return chroma('white').hex();
-    else         return this.scale( v / 9 ).hex();
+  colorizer.fromValue = function( t, v ) {
+    if ( v < 0 ) return chroma( 'white' ).hex();
+    else         return this.scale[t]( v / 9 ).hex();
   }
 
-  colorizer.highlightFromValue = function( v ) {
-    if ( v < 0 ) return chroma('white').hex();
-    else         return this.scale( v / 9 ).brighter().hex();
+  colorizer.highlightFromValue = function( t, v ) {
+    if ( v < 0 ) return chroma( 'white' ).hex();
+    else         return this.scale[t]( v / 9 ).brighter().hex();
   }
 
   return colorizer;
@@ -29,26 +57,29 @@ colorizer = (function() { // declare everything discreetly
 
 // translation of practical flood fill implementation as described on
 // http://en.wikipedia.org/wiki/Flood_fill
-floodAcquire = function( start, id ) {
-  cluster = []; // this is what we return, a cluster of vector2s pointing to cells with the same id
+floodAcquire = function( start, tile ) {
+  cluster = []; // this is what we return, a cluster of vector2s pointing to cells with the same value
   marked = []; // hacky way to keep track of what we've already seen
   marked.get = function( x, y ) { return this[ x + y * gridw ] === undefined ? false : this[ x + y * gridw ]; }
   marked.set = function( x, y ) { this[ x + y * gridw ] = true; }
   Q = [];
-  if ( grid.get( start.x, start.y ) != id ) return [];
+  if ( grid.get( start.x, start.y ) != tile ) return [];
   Q.push( start );
   while( Q.length > 0 ) {
     var n = Q.shift();
-    if ( grid.get( n.x, n.y ) == id && !marked.get( n.x, n.y ) ) {
+    if ( grid.get( n.x, n.y ).value == tile.value &&
+         grid.get( n.x, n.y ).type  == tile.type  && !marked.get( n.x, n.y ) ) {
       var w = { x: n.x, y: n.y };
       var e = { x: n.x, y: n.y };
 
       // move w to west until the node to the west of w is no longer id
-      while( grid.get( w.x - 1, w.y ) == id ) {
+      while( grid.get( w.x - 1, w.y ).value == tile.value &&
+             grid.get( w.x - 1, w.y ).type  == tile.type ) {
         w.x--;
       }
       // move e to east until the node to the west of w is no longer id
-      while( grid.get( e.x + 1, e.y ) == id ) {
+      while( grid.get( e.x + 1, e.y ).value == tile.value &&
+             grid.get( e.x + 1, e.y ).type  == tile.type ) {
         e.x++;
       }
 
@@ -58,8 +89,8 @@ floodAcquire = function( start, id ) {
         cluster.push( nn );
         var north = { x: nn.x, y: nn.y - 1 };
         var south = { x: nn.x, y: nn.y + 1 };
-        if ( grid.get( north.x, north.y ) == id ) Q.push( north );
-        if ( grid.get( south.x, south.y ) == id ) Q.push( south );
+        if ( grid.get( north.x, north.y ).value == tile.value && grid.get( north.x, north.y ).type == tile.type ) Q.push( north );
+        if ( grid.get( south.x, south.y ).value == tile.value && grid.get( south.x, south.y ).type == tile.type ) Q.push( south );
       }
     }
   }
@@ -70,30 +101,34 @@ draw = function() {
   screen.clear();
 
   // draw cells
+  gridRep = [];
   grid.forEach( function( e, i ) {
     var cell = screen.group()
                      .transform( { x: ( i % gridw ) * cellw, y : ( Math.floor( i / gridw ) ) * cellh } );
 
     cell.rect( cellw, cellh )
-        .attr( { fill : colorizer.fromValue( grid[i] ),
+        .attr( { fill : colorizer.fromValue( e.type, e.value ),
                  id   : 'cell' + i } )
         .mouseover(
           function() {
-            this.fill( { color: colorizer.highlightFromValue( grid[i] ) } );
+            this.fill( { color: colorizer.highlightFromValue( e.type, e.value ) } );
          } )
         .mouseout(
           function() {
-            this.fill( { color: colorizer.fromValue( grid[i] ) } );
+            this.fill( { color: colorizer.fromValue( e.type, e.value ) } );
           }
         );
 
     Hammer( document.getElementById( 'cell' + i ), { preventDefault: true } ).on( "dragstart swipestart", function( e ) {
+      if ( grid[i].type != TileType.DEACTIVATED ) {
         target = { x: i % gridw, y: Math.floor( i / gridw ) };
         selected = floodAcquire( target, grid.get( target.x, target.y ) );
+      } else {
+        selected = [];
       }
-    );
+    } );
 
-    var text = cell.plain( e > 0 ? e.toString() : "" )
+    var text = cell.plain( e.type != TileType.EMPTY ? e.value.toString() : "" )
                    .fill( { color: '#ffffff' } )
                    .transform( { x: cellw / 2, y: cellh / 2 } );
 
@@ -104,19 +139,28 @@ draw = function() {
 
 update = function() {
   gridRep.forEach( function( rep, i ) {
-    rep.text.plain( grid[i] > 0 ? grid[i].toString() : "" );
-    rep.cell.attr( { fill : colorizer.fromValue( grid[i] ) } )
+    if ( !grid[i] ) { console.log( "tile " + i + " is undefined" ); return; }
+    rep.text.plain( grid[i].type != TileType.EMPTY ? grid[i].value.toString() : "" );
+    rep.cell.attr( { fill : colorizer.fromValue( grid[i].type, grid[i].value ) } )
   } );
 }
 
 advance = function() {
-  cellw = Math.round( cellw * 0.8 );
-  cellh = Math.round( cellh * 0.8 );
+  level++;
 
-  if ( cellw > 70 ) {
+  if ( fastdebug ) {
+    cellw = Math.round( cellw * 0.5 );
+    cellh = Math.round( cellh * 0.5 );
+  } else {
+    cellw = Math.round( cellw * 0.8 );
+    cellh = Math.round( cellh * 0.8 );
+  }
+
+  if ( level < 3 && !fastdebug ) {
     maxval++;
   } else {
     maxval += 2;
+    enabled[ TileType.LAVA ] = true;
   }
 
   init();
@@ -125,9 +169,14 @@ advance = function() {
 prune = function( start ) {
   // see if we should delete this cell and surrounding cells
   var targets = floodAcquire( { x: start.x, y: start.y }, grid.get( start.x, start.y ) )
-  if ( targets.length == grid.get( start.x, start.y ) ) {
+  if ( targets.length == grid.get( start.x, start.y ).value ) {
+    if ( grid.get( start.x, start.y ).type == TileType.DEACTIVATED ) return;
     targets.forEach( function( cell ) {
-      grid[ cell.x + cell.y * gridw ] = -1;
+      if ( grid.get( cell.x, cell.y ).type == TileType.REGULAR ) {
+        grid.set( cell.x, cell.y, new Tile( TileType.EMPTY, -1 ) );
+      } else if ( grid.get( cell.x, cell.y ).type == TileType.LAVA ) {
+        grid.set( cell.x, cell.y, new Tile( TileType.DEACTIVATED, grid.get( cell.x, cell.y ).value ) );
+      }
       activeCells--;
       console.log( activeCells );
     } );
@@ -169,9 +218,9 @@ pollDrag = function( e ) {
       // if cell is not in original set and cell is not -1 then collision
       // if cell is not in original set and cell is -1 then no collision
       // if cell is in original set then no collsion
-      var cellIsOutofBounds = grid.get( cell.x, cell.y ) == -2;
+      var cellIsOutofBounds = grid.get( cell.x, cell.y ).type == TileType.OUT_OF_BOUNDS;
       var cellInOldSet = oldset.some( function( c ) { return c.x == cell.x && c.y == cell.y } );
-      var isCollision = cellIsOutofBounds || ( !cellInOldSet && grid.get( cell.x, cell.y ) != -1 );
+      var isCollision = cellIsOutofBounds || ( !cellInOldSet && grid.get( cell.x, cell.y ).type != TileType.EMPTY );
       return isCollision;
     } );
   }
@@ -179,8 +228,8 @@ pollDrag = function( e ) {
   function move( from, to ) {
     // cache all the from values before clearing them
     var fromVals = from.map( function( cell ) { return grid.get( cell.x, cell.y ); } );
-    from.forEach( function( cell ) { grid[ cell.x + cell.y * gridw ] = -1; } );
-    to.forEach( function( cell, i ) { grid[ cell.x + cell.y * gridw ] = fromVals[i]; } );
+    from.forEach( function( cell ) { grid.set( cell.x, cell.y, new Tile( TileType.EMPTY, -1 ) ); } );
+    to.forEach( function( cell, i ) { grid.set( cell.x, cell.y, fromVals[i] ); } );
   }
 
   if ( up ) {
@@ -230,99 +279,32 @@ pollDrag = function( e ) {
   }
 }
 
-pollKey = function( e ) {
-  e = e || window.event;
-  if ( e.keyCode == 37 )        { // left
-    var w = { x: selected.x, y: selected.y };
-
-    // move w to west until the node to the west of w is no longer id
-    while( grid.get( w.x - 1, w.y ) == -1 ) {
-      w.x--;
-    }
-
-    // swap with w
-    var temp = grid.get( w.x, w.y );
-    grid[ w.x + gridw * w.y ] = grid.get( selected.x, selected.y );
-    grid[ selected.x + gridw * selected.y ] = temp;
-
-    selected = w;
-
-    update();
-    draw();
-  } else if ( e.keyCode == 38 ) { // up
-    var n = { x: selected.x, y: selected.y };
-
-    // move n to norh until the node to the west of w is no longer id
-    while( grid.get( n.x, n.y - 1 ) == -1 ) {
-      n.y--;
-    }
-
-    // swap with n
-    var temp = grid.get( n.x, n.y );
-    grid[ n.x + gridw * n.y ] = grid.get( selected.x, selected.y );
-    grid[ selected.x + gridw * selected.y ] = temp;
-
-    selected = n;
-
-    update();
-    draw();
-  } else if ( e.keyCode == 39 ) { // right
-    var e = { x: selected.x, y: selected.y };
-
-    // move e to east until the node to the west of w is no longer id
-    while( grid.get( e.x + 1, e.y ) == -1 ) {
-      e.x++;
-    }
-
-    // swap with e
-    var temp = grid.get( e.x, e.y );
-    grid[ e.x + gridw * e.y ] = grid.get( selected.x, selected.y );
-    grid[ selected.x + gridw * selected.y ] = temp;
-
-    selected = e;
-
-    update();
-    draw();
-  } else if ( e.keyCode == 40 ) { // down
-    var s = { x: selected.x, y: selected.y };
-
-    // move s to south until the node to the west of w is no longer id
-    while( grid.get( s.x, s.y + 1 ) == -1 ) {
-      s.y++;
-    }
-
-    // swap with s
-    var temp = grid.get( s.x, s.y );
-    grid[ s.x + gridw * s.y ] = grid.get( selected.x, selected.y );
-    grid[ selected.x + gridw * selected.y ] = temp;
-
-    selected = s;
-
-    update();
-    draw();
-  }
-}
-
 init = function() {
   if ( screen == null )
-    screen = SVG( 'screen' ).size( 500, 500 );
+    screen = SVG( 'screen' ).size( 480, 480 );
 
-  gridw = Math.floor( screen.width() / cellw ) - 1;
-  gridh = Math.floor( screen.height() / cellh ) - 1;
+  gridw = Math.floor( screen.width() / cellw );
+  gridh = Math.floor( screen.height() / cellh );
 
-  console.log( "new grid size is " + gridw + " " + gridh );
+  console.log( "new grid size is " + gridw + "x" + gridh );
 
   var tiles = [];
 
   grid = [];
   grid.get = function( x, y ) {
-    return y >= 0 && x >= 0 && x < gridw && y < gridh ? this[y * gridw + x] : -2;
+    return y >= 0 && x >= 0 && x < gridw && y < gridh ? this[ x + y * gridw ] : new Tile( TileType.OUT_OF_BOUNDS, -1 );
+  }
+
+  grid.set = function( x, y, tile ) {
+    if ( y >= 0 && x >= 0 && x < gridw && y < gridh ) {
+      grid[ x + y * gridw ] = tile;
+    }
   }
 
   // set up grid
   for ( i = 0; i < gridw * gridh; i++ ) {
     var val = Math.round( Math.random() * ( maxval - 2 ) + 2 );
-    grid.push( val );
+    grid.push( new Tile( TileType.REGULAR, val ) );
     if ( tiles[ val ] == null ) {
       tiles[ val ] = 0;
     }
@@ -330,11 +312,11 @@ init = function() {
   }
 
   // delete random elements
-  for ( i = 0; i < screen.width() / cellw * screen.height() / cellh; i++ ) {
+  for ( i = 0; i < gridw * gridh; i++ ) {
     if ( Math.random() > 0.4 ) {
-      if ( tiles[ grid[i] ] > grid[i] ) {
-        tiles[ grid[i] ]--;
-        grid[i] = -1;
+      if ( tiles[ grid[i].value ] > grid[i].value ) {
+        tiles[ grid[i].value ]--;
+        grid[i] = new Tile( TileType.EMPTY, -1 );
       }
     }
   }
@@ -344,8 +326,8 @@ init = function() {
     if ( tiles[i] > i ) {
       var count = tiles[i];
       for ( j = 0; j < gridw * gridh && tiles[i] > i; j++ ) {
-        if ( grid[j] == i ) {
-          grid[j] = -1;
+        if ( grid[j].value == i ) {
+          grid[j] = new Tile( TileType.EMPTY, -1 );
           tiles[i]--;
         }
       }
@@ -357,9 +339,9 @@ init = function() {
     if ( tiles[i] < i ) {
       var count = tiles[i];
       while ( tiles[i] < i ) {
-        var randIndex = Math.round( Math.random() * gridw * gridh );
-        if ( grid[ randIndex ] == -1 ) {
-          grid[ randIndex ] = i;
+        var randIndex = Math.round( Math.random() * ( gridw * gridh - 1 ) );
+        if ( grid[ randIndex ].type == TileType.EMPTY ) {
+          grid[ randIndex ] = new Tile( TileType.REGULAR, i );
           tiles[i]++;
         }
       }
@@ -372,9 +354,61 @@ init = function() {
     activeCells += tiles[i];
   }
 
+  if ( enabled[ TileType.LAVA ] ) {
+    tiles = [];
+    for ( i = 0; i < gridw * gridh; i++ ) {
+      if ( grid[i].type == TileType.EMPTY ) {
+        if ( Math.random() > 0.4 ) {
+          var val = Math.round( Math.random() * ( maxval - 4 ) + 2 );
+          grid[i] = new Tile( TileType.LAVA, val );
+          if ( tiles[ val ] == null ) {
+            tiles[ val ] = 0;
+          }
+          tiles[ val ]++;
+        }
+      }
+    }
+
+    // delete random elements
+    for ( i = 0; i < gridw * gridh; i++ ) {
+      if ( Math.random() > 0.4 ) {
+        if ( grid[i].type == TileType.LAVA && tiles[ grid[i].value ] > grid[i].value ) {
+          tiles[ grid[i].value ]--;
+          grid[i] = new Tile( TileType.EMPTY, -1 );
+        }
+      }
+    }
+
+    // delete necessary elements
+    for ( i = 2; i <= maxval; i++ ) {
+      if ( tiles[i] > i ) {
+        var count = tiles[i];
+        for ( j = 0; j < gridw * gridh && tiles[i] > i; j++ ) {
+          if ( grid[j].type == TileType.LAVA && grid[j].value == i ) {
+            grid[j] = new Tile( TileType.EMPTY, -1 );
+            tiles[i]--;
+          }
+        }
+      }
+    }
+
+    // add necessary elements
+    for ( i = 2; i <= maxval; i++ ) {
+      if ( tiles[i] < i ) {
+        var count = tiles[i];
+        while ( tiles[i] < i ) {
+          var randIndex = Math.round( Math.random() * ( gridw * gridh - 1 ) );
+          console.log( randIndex );
+          if ( grid[ randIndex ].type == TileType.EMPTY ) {
+            grid[ randIndex ] = new Tile( TileType.REGULAR, i );
+            tiles[i]++;
+          }
+        }
+      }
+    }
+  }
+
   draw();
 
   Hammer( document.getElementById( 'screen' ), { preventDefault: true } ).on( "dragend swipeend", pollDrag );
-
-  document.onkeydown = pollKey;
 }
