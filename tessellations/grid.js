@@ -156,10 +156,9 @@ advance = function() {
     cellh = Math.round( cellh * 0.8 );
   }
 
-  if ( level < 3 && !fastdebug ) {
-    maxval++;
-  } else {
-    maxval += 2;
+  maxval++;
+
+  if ( level > 3 || fastdebug ) {
     enabled[ TileType.LAVA ] = true;
   }
 
@@ -351,7 +350,11 @@ init = function() {
   // count active cells
   activeCells = 0;
   for ( i = 2; i <= maxval; i++ ) {
-    activeCells += tiles[i];
+    if ( tiles[i] ) {
+      activeCells += tiles[i];
+    } else {
+      console.log( "bad state:" + i + " is null" );
+    }
   }
 
   if ( enabled[ TileType.LAVA ] ) {
@@ -398,9 +401,8 @@ init = function() {
         var count = tiles[i];
         while ( tiles[i] < i ) {
           var randIndex = Math.round( Math.random() * ( gridw * gridh - 1 ) );
-          console.log( randIndex );
           if ( grid[ randIndex ].type == TileType.EMPTY ) {
-            grid[ randIndex ] = new Tile( TileType.REGULAR, i );
+            grid[ randIndex ] = new Tile( TileType.LAVA, i );
             tiles[i]++;
           }
         }
