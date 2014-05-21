@@ -8,6 +8,7 @@ var activeCells = 0;
 var level = 1;
 var fastdebug = false;
 
+var hover = [];
 var selected = [];
 
 var TileType = {
@@ -49,6 +50,11 @@ colorizer = (function() { // declare everything discreetly
   colorizer.highlightFromValue = function( t, v ) {
     if ( v < 0 ) return chroma( 'white' ).hex();
     else         return this.scale[t]( v / 9 ).brighter().hex();
+  }
+
+  colorizer.borderFromValue = function( t, v ) {
+    if ( v < 0 ) return chroma( 'white' ).hex();
+    else         return this.scale[t]( v / 9 ).darker().hex();
   }
 
   return colorizer;
@@ -106,16 +112,27 @@ draw = function() {
     var cell = screen.group()
                      .transform( { x: ( i % gridw ) * cellw, y : ( Math.floor( i / gridw ) ) * cellh } );
 
-    cell.rect( cellw, cellh )
+    var rect = cell.rect( cellw, cellh )
         .attr( { fill : colorizer.fromValue( e.type, e.value ),
                  id   : 'cell' + i } )
         .mouseover(
           function() {
-            this.fill( { color: colorizer.highlightFromValue( e.type, e.value ) } );
+            if ( grid[i].type == TileType.DEACTIVATED ) return;
+            target = { x: i % gridw, y: Math.floor( i / gridw ) };
+            hover = floodAcquire( target, grid.get( target.x, target.y ) );
+            hover.forEach( function( t ) {
+              var i = t.x + t.y * gridw;
+              gridRep[i].rect.attr( { fill : colorizer.highlightFromValue( grid[i].type, grid[i].value ) } );
+            } );
          } )
         .mouseout(
           function() {
-            this.fill( { color: colorizer.fromValue( e.type, e.value ) } );
+            target = { x: i % gridw, y: Math.floor( i / gridw ) };
+            hover = floodAcquire( target, grid.get( target.x, target.y ) );
+            hover.forEach( function( t ) {
+              var i = t.x + t.y * gridw;
+              gridRep[i].rect.attr( { fill : colorizer.fromValue( grid[i].type, grid[i].value ) } );
+            } );
           }
         );
 
@@ -132,7 +149,7 @@ draw = function() {
                    .fill( { color: '#ffffff' } )
                    .transform( { x: cellw / 2, y: cellh / 2 } );
 
-    gridRep.push( { cell : cell, text : text } );
+    gridRep.push( { rect : rect, text : text } );
 
   } );
 }
@@ -141,7 +158,7 @@ update = function() {
   gridRep.forEach( function( rep, i ) {
     if ( !grid[i] ) { console.log( "tile " + i + " is undefined" ); return; }
     rep.text.plain( grid[i].type != TileType.EMPTY ? grid[i].value.toString() : "" );
-    rep.cell.attr( { fill : colorizer.fromValue( grid[i].type, grid[i].value ) } )
+    rep.rect.attr( { fill : colorizer.fromValue( grid[i].type, grid[i].value ) } )
   } );
 }
 
@@ -173,10 +190,11 @@ prune = function( start ) {
     targets.forEach( function( cell ) {
       if ( grid.get( cell.x, cell.y ).type == TileType.REGULAR ) {
         grid.set( cell.x, cell.y, new Tile( TileType.EMPTY, -1 ) );
+        activeCells--;
       } else if ( grid.get( cell.x, cell.y ).type == TileType.LAVA ) {
         grid.set( cell.x, cell.y, new Tile( TileType.DEACTIVATED, grid.get( cell.x, cell.y ).value ) );
       }
-      activeCells--;
+
       console.log( activeCells );
     } );
   }
@@ -280,7 +298,7 @@ pollDrag = function( e ) {
 
 init = function() {
   if ( screen == null )
-    screen = SVG( 'screen' ).size( 480, 480 );
+    screen = SVG( 'screen' ).size( 482, 482 );
 
   gridw = Math.floor( screen.width() / cellw );
   gridh = Math.floor( screen.height() / cellh );

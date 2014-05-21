@@ -10,7 +10,7 @@ ul { list-style-type: none }
 }
 
 /* game */
-#screen { width:480px; height:480px; margin: 50px auto auto auto }
+#screen { width:482px; height:482px; margin: 50px auto auto auto }
 text { font-size: 10pt; color:#fff; margin: 0; padding: 0 }
 .guide text { font-size: 7pt; color:#000; margin: 0; padding: 0 }
 
