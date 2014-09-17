@@ -18,31 +18,12 @@ var disableMouse = false;
 var hover = [];
 var selected = [];
 
-var TileType;
-(function (TileType) {
-    TileType[TileType["OUT_OF_BOUNDS"] = 0] = "OUT_OF_BOUNDS";
-    TileType[TileType["EMPTY"] = 1] = "EMPTY";
-    TileType[TileType["REGULAR"] = 2] = "REGULAR";
-    TileType[TileType["CONCRETE"] = 3] = "CONCRETE";
-    TileType[TileType["DEACTIVATED"] = 4] = "DEACTIVATED";
-    TileType[TileType["LAVA"] = 5] = "LAVA";
-})(TileType || (TileType = {}));
-;
-
 // weird to do this, but I want to instantiate this object array/hash with TileType vals
 // and I can't do that in the constructor like above, because JavaScript doesn't like periods
 // in its initializers.
 var enabled = (function () {
     this[5 /* LAVA */] = false;
     return this;
-})();
-
-var Tile = (function () {
-    function Tile(t, v) {
-        this.type = t;
-        this.value = v;
-    }
-    return Tile;
 })();
 
 var colorizer = (function () {
@@ -365,7 +346,7 @@ var pollDrag = function (e) {
 
 var init = function () {
     if (canvas == null)
-        canvas = SVG('screen').size(482, 482);
+        canvas = SVG('screen').size(720, 720);
 
     gridw = Math.floor(canvas.width() / cellw);
     gridh = Math.floor(canvas.height() / cellh);
