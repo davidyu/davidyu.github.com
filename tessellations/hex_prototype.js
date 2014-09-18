@@ -7,7 +7,6 @@ var MIN_VAL = 2;
 
 var grid;
 var gridView;
-var gridRep = [];
 var gameParams;
 var gameState;
 
@@ -16,10 +15,6 @@ var canvas = null;
 // even-r horizontal layout
 var draw = function () {
     canvas.clear();
-
-    // draw cells
-    gridRep = [];
-
     gridView.draw(canvas);
 };
 
@@ -113,22 +108,32 @@ var checkVictoryCondition = function () {
     }
 };
 
-var prune = function (start) {
+var prune = function (start, postCallback) {
+    draw(); // sync model and view/DOM elements -- this is important, otherwise the view will be outdated and animations won't play right!!!
+
     // see if we should delete this cell and surrounding cells
     var startTile = grid.get(start.q, start.r);
     var group = floodAcquire(start, startTile);
     if (group.length == startTile.value) {
         if (startTile.type == 4 /* DEACTIVATED */)
             return;
-        group.forEach(function (cell) {
+        group.forEach(function (cell, i) {
             // each Tile should have its own "prune" behavior
             if (grid.get(cell.q, cell.r).type == 2 /* REGULAR */) {
                 grid.set(cell.q, cell.r, new Tile(1 /* EMPTY */, -1));
-                gameState.activeCells--;
+                var c = gridView.getDOMElement(cell.q, cell.r);
+                c.animate(200, '>', 0).scale(0, 0).after(function () {
+                    gameState.activeCells--;
+                    if (i == group.length - 1) {
+                        postCallback();
+                    }
+                });
             } else if (grid.get(cell.q, cell.r).type == 5 /* LAVA */) {
                 grid.set(cell.q, cell.r, new Tile(4 /* DEACTIVATED */, grid.get(cell.q, cell.r).value));
             }
         });
+    } else {
+        postCallback();
     }
 };
 
@@ -214,20 +219,24 @@ var onDrag = function (e) {
             if (i == 0) {
                 anim.after(function () {
                     gameState.disableMouse = false;
-                    prune(to[0]);
-                    update();
-                    draw();
-                    extendUI();
+                    prune(to[0], function () {
+                        draw();
+                        extendUI();
+                        update();
+                    });
                 });
             }
         }
     }
 
-    prune(selected[0]);
-    update();
-    if (selected[0].type == 1 /* EMPTY */) {
+    prune(selected[0], function () {
         draw();
         extendUI();
+        update();
+    });
+
+    // some jank now that the tile won't be immediately removed
+    if (selected[0].type == 1 /* EMPTY */) {
         return;
     }
 

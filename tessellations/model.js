@@ -13,6 +13,7 @@ var Tile = (function () {
     function Tile(t, v) {
         this.type = t;
         this.value = v;
+        this.selected = false;
     }
     return Tile;
 })();
