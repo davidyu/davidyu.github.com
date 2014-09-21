@@ -9,6 +9,23 @@ var TileType;
 })(TileType || (TileType = {}));
 ;
 
+
+var AxialCoords = (function () {
+    function AxialCoords(q, r) {
+        this.q = q;
+        this.r = r;
+    }
+    return AxialCoords;
+})();
+
+var CartesianCoords = (function () {
+    function CartesianCoords(x, y) {
+        this.x = x;
+        this.y = y;
+    }
+    return CartesianCoords;
+})();
+
 var Tile = (function () {
     function Tile(t, v) {
         this.type = t;
@@ -31,17 +48,17 @@ var Model;
                 this.grid.push(DefaultTile);
             }
         }
-        Square.prototype.get = function (x, y) {
-            return y >= 0 && x >= 0 && x < this.gridw && y < this.gridh ? this.grid[x + y * this.gridw] : this.outOfBoundsTile;
+        Square.prototype.get = function (c) {
+            return c.y >= 0 && c.x >= 0 && c.x < this.gridw && c.y < this.gridh ? this.grid[c.x + c.y * this.gridw] : this.outOfBoundsTile;
         };
 
         Square.prototype.getFlat = function (i) {
             return i >= 0 && i < this.gridw * this.gridh ? this.grid[i] : this.outOfBoundsTile;
         };
 
-        Square.prototype.set = function (x, y, tile) {
-            if (y >= 0 && x >= 0 && x < this.gridw && y < this.gridh) {
-                this.grid[x + y * this.gridw] = tile;
+        Square.prototype.set = function (c, tile) {
+            if (c.y >= 0 && c.x >= 0 && c.x < this.gridw && c.y < this.gridh) {
+                this.grid[c.x + c.y * this.gridw] = tile;
             }
         };
 
@@ -85,17 +102,17 @@ var Model;
             return x + z * (this.diameter());
         };
 
-        Hex.prototype.get = function (q, r) {
-            return Math.abs(q) <= this.gridr && Math.abs(r) <= this.gridr ? this.grid[this.toFlat(q, r)] : this.outOfBoundsTile;
+        Hex.prototype.get = function (c) {
+            return Math.abs(c.q) <= this.gridr && Math.abs(c.r) <= this.gridr ? this.grid[this.toFlat(c.q, c.r)] : this.outOfBoundsTile;
         };
 
         Hex.prototype.getFlat = function (i) {
             return i >= 0 && i < this.grid.length ? this.grid[i] : this.outOfBoundsTile;
         };
 
-        Hex.prototype.set = function (q, r, tile) {
-            if (Math.abs(q) <= this.gridr && Math.abs(r) <= this.gridr) {
-                this.grid[this.toFlat(q, r)] = tile;
+        Hex.prototype.set = function (c, tile) {
+            if (Math.abs(c.q) <= this.gridr && Math.abs(c.r) <= this.gridr) {
+                this.grid[this.toFlat(c.q, c.r)] = tile;
             }
         };
 

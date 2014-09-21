@@ -38,20 +38,21 @@ var floodAcquire = function (start, tile) {
             this[JSON.stringify(key)] = true;
         };
         var Q = [];
-        if (grid.get(start.q, start.r) != tile)
+        if (grid.get(new AxialCoords(start.q, start.r)) != tile)
             return [];
         Q.push(start);
         while (Q.length > 0) {
             var n = Q.shift();
-            if (grid.get(n.q, n.r).value == tile.value && grid.get(n.q, n.r).type == tile.type && !marked.get({ q: n.q, r: n.r })) {
+            var c = new AxialCoords(n.q, n.r);
+            if (grid.get(c).value == tile.value && grid.get(c).type == tile.type && !marked.get({ q: n.q, r: n.r })) {
                 var w = { q: n.q, r: n.r };
                 var e = { q: n.q, r: n.r };
 
-                while (grid.get(w.q - 1, w.r).value == tile.value && grid.get(w.q - 1, w.r).type == tile.type) {
+                while (grid.get(new AxialCoords(w.q - 1, w.r)).value == tile.value && grid.get(new AxialCoords(w.q - 1, w.r)).type == tile.type) {
                     w.q--;
                 }
 
-                while (grid.get(e.q + 1, e.r).value == tile.value && grid.get(e.q + 1, e.r).type == tile.type) {
+                while (grid.get(new AxialCoords(e.q + 1, e.r)).value == tile.value && grid.get(new AxialCoords(e.q + 1, e.r)).type == tile.type) {
                     e.q++;
                 }
 
@@ -65,13 +66,13 @@ var floodAcquire = function (start, tile) {
                     var sw = { q: nn.q - 1, r: nn.r + 1 };
                     var se = { q: nn.q, r: nn.r + 1 };
 
-                    if (grid.get(nw.q, nw.r).value == tile.value && grid.get(nw.q, nw.r).type == tile.type)
+                    if (grid.get(new AxialCoords(nw.q, nw.r)).value == tile.value && grid.get(new AxialCoords(nw.q, nw.r)).type == tile.type)
                         Q.push(nw);
-                    if (grid.get(ne.q, ne.r).value == tile.value && grid.get(ne.q, ne.r).type == tile.type)
+                    if (grid.get(new AxialCoords(ne.q, ne.r)).value == tile.value && grid.get(new AxialCoords(ne.q, ne.r)).type == tile.type)
                         Q.push(ne);
-                    if (grid.get(sw.q, sw.r).value == tile.value && grid.get(sw.q, sw.r).type == tile.type)
+                    if (grid.get(new AxialCoords(sw.q, sw.r)).value == tile.value && grid.get(new AxialCoords(sw.q, sw.r)).type == tile.type)
                         Q.push(sw);
-                    if (grid.get(se.q, se.r).value == tile.value && grid.get(se.q, se.r).type == tile.type)
+                    if (grid.get(new AxialCoords(se.q, se.r)).value == tile.value && grid.get(new AxialCoords(se.q, se.r)).type == tile.type)
                         Q.push(se);
                 }
             }
@@ -81,16 +82,37 @@ var floodAcquire = function (start, tile) {
 };
 
 var extendUI = function () {
-    var cells = gridView.getDOMElements();
+    var cells = gridView.getSVGElements();
 
     cells.forEach(function (cell, i) {
         if (cell === null)
             return;
+        cell.mouseover(function () {
+            if (gameState.disableMouse)
+                return;
+
+            // 'this' refers to a wrapper provided by SVGjs, so we have to go down to node to get the model
+            if (grid.get(new AxialCoords(cell.data.q, cell.data.r)).type == 4 /* DEACTIVATED */)
+                return;
+            var target = { q: cell.data.q, r: cell.data.r };
+            var hover = floodAcquire(target, grid.get(new AxialCoords(target.q, target.r)));
+            hover.forEach(function (t) {
+                gridView.getSVGElement(new AxialCoords(t.q, t.r)).hex.attr({ fill: gridView.colorizer.highlightFromTile(grid.getFlat(i)) });
+            });
+        }).mouseout(function () {
+            if (gameState.disableMouse)
+                return;
+            var target = { q: cell.data.q, r: cell.data.r };
+            var hover = floodAcquire(target, grid.get(new AxialCoords(target.q, target.r)));
+            hover.forEach(function (t) {
+                gridView.getSVGElement(new AxialCoords(t.q, t.r)).hex.attr({ fill: gridView.colorizer.fromTile(grid.getFlat(i)) });
+            });
+        });
         var hammer = Hammer(cell.node, { preventDefault: true });
         hammer.on("dragstart swipestart", function (e) {
-            if (grid.get(cell.data.q, cell.data.r).type != 4 /* DEACTIVATED */) {
+            if (grid.get(new AxialCoords(cell.data.q, cell.data.r)).type != 4 /* DEACTIVATED */) {
                 var target = { r: cell.data.r, q: cell.data.q };
-                gameState.selected = floodAcquire(target, grid.get(target.q, target.r));
+                gameState.selected = floodAcquire(target, grid.get(new AxialCoords(target.q, target.r)));
             } else {
                 gameState.selected = [];
             }
@@ -112,24 +134,24 @@ var prune = function (start, postCallback) {
     draw(); // sync model and view/DOM elements -- this is important, otherwise the view will be outdated and animations won't play right!!!
 
     // see if we should delete this cell and surrounding cells
-    var startTile = grid.get(start.q, start.r);
+    var startTile = grid.get(new AxialCoords(start.q, start.r));
     var group = floodAcquire(start, startTile);
     if (group.length == startTile.value) {
         if (startTile.type == 4 /* DEACTIVATED */)
             return;
         group.forEach(function (cell, i) {
             // each Tile should have its own "prune" behavior
-            if (grid.get(cell.q, cell.r).type == 2 /* REGULAR */) {
-                grid.set(cell.q, cell.r, new Tile(1 /* EMPTY */, -1));
-                var c = gridView.getDOMElement(cell.q, cell.r);
+            if (grid.get(new AxialCoords(cell.q, cell.r)).type == 2 /* REGULAR */) {
+                grid.set(new AxialCoords(cell.q, cell.r), new Tile(1 /* EMPTY */, -1));
+                var c = gridView.getSVGElement(new AxialCoords(cell.q, cell.r));
                 c.animate(200, '>', 0).scale(0, 0).after(function () {
                     gameState.activeCells--;
                     if (i == group.length - 1) {
                         postCallback();
                     }
                 });
-            } else if (grid.get(cell.q, cell.r).type == 5 /* LAVA */) {
-                grid.set(cell.q, cell.r, new Tile(4 /* DEACTIVATED */, grid.get(cell.q, cell.r).value));
+            } else if (grid.get(new AxialCoords(cell.q, cell.r)).type == 5 /* LAVA */) {
+                grid.set(new AxialCoords(cell.q, cell.r), new Tile(4 /* DEACTIVATED */, grid.get(new AxialCoords(cell.q, cell.r)).value));
             }
         });
     } else {
@@ -187,11 +209,11 @@ var onDrag = function (e) {
             // if cell is not in original set and cell is not -1 then collision
             // if cell is not in original set and cell is -1 then no collision
             // if cell is in original set then no collsion
-            var cellIsOutofBounds = grid.get(cell.q, cell.r).type == 0 /* OUT_OF_BOUNDS */;
+            var cellIsOutofBounds = grid.get(new AxialCoords(cell.q, cell.r)).type == 0 /* OUT_OF_BOUNDS */;
             var cellInOldSet = oldset.some(function (c) {
                 return c.q == cell.q && c.r == cell.r;
             });
-            var isCollision = cellIsOutofBounds || (!cellInOldSet && grid.get(cell.q, cell.r).type != 1 /* EMPTY */);
+            var isCollision = cellIsOutofBounds || (!cellInOldSet && grid.get(new AxialCoords(cell.q, cell.r)).type != 1 /* EMPTY */);
             return isCollision;
         });
     }
@@ -199,18 +221,18 @@ var onDrag = function (e) {
     function move(from, to) {
         // cache all the from values before clearing them
         var fromVals = from.map(function (cell) {
-            return grid.get(cell.q, cell.r);
+            return grid.get(new AxialCoords(cell.q, cell.r));
         });
         from.forEach(function (cell) {
-            grid.set(cell.q, cell.r, new Tile(1 /* EMPTY */, -1));
+            grid.set(new AxialCoords(cell.q, cell.r), new Tile(1 /* EMPTY */, -1));
         });
         to.forEach(function (cell, i) {
-            grid.set(cell.q, cell.r, new Tile(fromVals[i].type, fromVals[i].value));
+            grid.set(new AxialCoords(cell.q, cell.r), new Tile(fromVals[i].type, fromVals[i].value));
         });
 
         for (var i = 0; i < from.length; i++) {
-            var f = gridView.getDOMElement(from[i].q, from[i].r);
-            var t = gridView.getDOMElement(to[i].q, to[i].r);
+            var f = gridView.getSVGElement(new AxialCoords(from[i].q, from[i].r));
+            var t = gridView.getSVGElement(new AxialCoords(to[i].q, to[i].r));
 
             gameState.disableMouse = true;
 
@@ -236,7 +258,7 @@ var onDrag = function (e) {
     });
 
     // some jank now that the tile won't be immediately removed
-    if (selected[0].type == 1 /* EMPTY */) {
+    if (grid.get(new AxialCoords(selected[0].q, selected[0].r)).type == 1 /* EMPTY */) {
         return;
     }
 

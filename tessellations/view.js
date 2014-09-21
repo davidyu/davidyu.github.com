@@ -2,6 +2,27 @@
 /// <reference path="lib/svgjs.d.ts" />
 /// <reference path="./model.ts" />
 
+var Colorizer = (function () {
+    function Colorizer() {
+        this.highlightFromTile = function (t) {
+            if (t.type == 1 /* EMPTY */) {
+                return this.scale[t.type](t.value / 9).hex();
+            } else {
+                return this.scale[t.type](t.value / 9).brighter().hex();
+            }
+        };
+        this.scale = {};
+        this.scale[1 /* EMPTY */] = chroma.scale(['#D7FAF3', '#F3F4E5', '#FFFFFF']);
+        this.scale[2 /* REGULAR */] = chroma.scale(['#4BF920', '#1DE5A2', '#48CC20', '#18BC49', '#0DAD6D']);
+        this.scale[5 /* LAVA */] = chroma.scale(['#AE5750', '#F96541', '#FF7939']);
+        this.scale[4 /* DEACTIVATED */] = chroma.scale(['#64585A', '#64585A']);
+    }
+    Colorizer.prototype.fromTile = function (t) {
+        return this.scale[t.type](t.value / 9).hex();
+    };
+    return Colorizer;
+})();
+
 // quick-n-dirty
 var Vec2 = (function () {
     function Vec2(x, y) {
@@ -16,20 +37,6 @@ var Vec2 = (function () {
 
 var View;
 (function (View) {
-    var Colorizer = (function () {
-        function Colorizer() {
-            this.scale = {};
-            this.scale[1 /* EMPTY */] = chroma.scale(['#D7FAF3', '#F3F4E5', '#FFFFFF']);
-            this.scale[2 /* REGULAR */] = chroma.scale(['#4BF920', '#1DE5A2', '#48CC20', '#18BC49', '#0DAD6D']);
-            this.scale[5 /* LAVA */] = chroma.scale(['#AE5750', '#F96541', '#FF7939']);
-            this.scale[4 /* DEACTIVATED */] = chroma.scale(['#64585A', '#64585A']);
-        }
-        Colorizer.prototype.fromTile = function (t) {
-            return this.scale[t.type](t.value / 9).hex();
-        };
-        return Colorizer;
-    })();
-
     function fromModel(grid) {
         if (grid instanceof Model.Square)
             return new SquareView(grid);
@@ -45,11 +52,11 @@ var View;
         SquareView.prototype.draw = function (canvas) {
             // TODO implement me
         };
-        SquareView.prototype.getDOMElements = function () {
+        SquareView.prototype.getSVGElements = function () {
             // TODO implement me
             return null;
         };
-        SquareView.prototype.getDOMElement = function (x, y) {
+        SquareView.prototype.getSVGElement = function (c) {
             // TODO implement me
             return null;
         };
@@ -103,6 +110,7 @@ var View;
             }, "");
 
             var hex = cell.polygon(ptstr);
+            cell.hex = hex;
 
             hex.attr({
                 'fill': this.colorizer.fromTile(e),
@@ -122,7 +130,7 @@ var View;
 
             for (var r = -this.model.gridr; r <= this.model.gridr; r++) {
                 for (var q = -this.model.gridr; q <= this.model.gridr; q++) {
-                    var e = this.model.get(q, r);
+                    var e = this.model.get(new AxialCoords(q, r));
                     if (e.type == 0 /* OUT_OF_BOUNDS */) {
                         this.cells[this.model.toFlat(q, r)] = null; // standin
                     }
@@ -131,7 +139,7 @@ var View;
 
             for (var r = -this.model.gridr; r <= this.model.gridr; r++) {
                 for (var q = -this.model.gridr; q <= this.model.gridr; q++) {
-                    var e = this.model.get(q, r);
+                    var e = this.model.get(new AxialCoords(q, r));
                     if (e.type == 1 /* EMPTY */) {
                         this.cells[this.model.toFlat(q, r)] = this.drawTile(canvas, q, r, e);
                     } else if (e.type != 0 /* OUT_OF_BOUNDS */) {
@@ -143,7 +151,7 @@ var View;
 
             for (var r = -this.model.gridr; r <= this.model.gridr; r++) {
                 for (var q = -this.model.gridr; q <= this.model.gridr; q++) {
-                    var e = this.model.get(q, r);
+                    var e = this.model.get(new AxialCoords(q, r));
                     if (e.type == 2 /* REGULAR */) {
                         this.cells[this.model.toFlat(q, r)] = this.drawTile(canvas, q, r, e);
                     }
@@ -151,12 +159,12 @@ var View;
             }
         };
 
-        HexView.prototype.getDOMElements = function () {
+        HexView.prototype.getSVGElements = function () {
             return this.cells;
         };
 
-        HexView.prototype.getDOMElement = function (q, r) {
-            return Math.abs(q) <= this.model.gridr && Math.abs(r) <= this.model.gridr ? this.cells[this.model.toFlat(q, r)] : null;
+        HexView.prototype.getSVGElement = function (c) {
+            return Math.abs(c.q) <= this.model.gridr && Math.abs(c.r) <= this.model.gridr ? this.cells[this.model.toFlat(c.q, c.r)] : null;
         };
         return HexView;
     })();

@@ -3,7 +3,9 @@
 /// <reference path="lib/svgjs.d.ts" />
 /// <reference path="lib/utils.ts" />
 /// <reference path="./model.ts" />
+/// <reference path="./view.ts" />
 var grid;
+var gridView;
 var gridw = 0, gridh = 0;
 var gridRep = [];
 var cellw = 120;
@@ -70,20 +72,21 @@ var floodAcquire = function (start, tile) {
         this[x + y * gridw] = true;
     };
     var Q = [];
-    if (grid.get(start.x, start.y) != tile)
+    if (grid.get(new CartesianCoords(start.x, start.y)) != tile)
         return [];
     Q.push(start);
     while (Q.length > 0) {
         var n = Q.shift();
-        if (grid.get(n.x, n.y).value == tile.value && grid.get(n.x, n.y).type == tile.type && !marked.get(n.x, n.y)) {
+        var c = new CartesianCoords(n.x, n.y);
+        if (grid.get(c).value == tile.value && grid.get(c).type == tile.type && !marked.get(n.x, n.y)) {
             var w = { x: n.x, y: n.y };
             var e = { x: n.x, y: n.y };
 
-            while (grid.get(w.x - 1, w.y).value == tile.value && grid.get(w.x - 1, w.y).type == tile.type) {
+            while (grid.get(new CartesianCoords(w.x - 1, w.y)).value == tile.value && grid.get(new CartesianCoords(w.x - 1, w.y)).type == tile.type) {
                 w.x--;
             }
 
-            while (grid.get(e.x + 1, e.y).value == tile.value && grid.get(e.x + 1, e.y).type == tile.type) {
+            while (grid.get(new CartesianCoords(e.x + 1, e.y)).value == tile.value && grid.get(new CartesianCoords(e.x + 1, e.y)).type == tile.type) {
                 e.x++;
             }
 
@@ -93,9 +96,9 @@ var floodAcquire = function (start, tile) {
                 cluster.push(nn);
                 var north = { x: nn.x, y: nn.y - 1 };
                 var south = { x: nn.x, y: nn.y + 1 };
-                if (grid.get(north.x, north.y).value == tile.value && grid.get(north.x, north.y).type == tile.type)
+                if (grid.get(new CartesianCoords(north.x, north.y)).value == tile.value && grid.get(new CartesianCoords(north.x, north.y)).type == tile.type)
                     Q.push(north);
-                if (grid.get(south.x, south.y).value == tile.value && grid.get(south.x, south.y).type == tile.type)
+                if (grid.get(new CartesianCoords(south.x, south.y)).value == tile.value && grid.get(new CartesianCoords(south.x, south.y)).type == tile.type)
                     Q.push(south);
             }
         }
@@ -111,7 +114,7 @@ var draw = function () {
     for (var y = 0; y < gridh; y++) {
         for (var x = 0; x < gridw; x++) {
             var model = { x: x, y: y, i: x + y * gridw };
-            var e = grid.get(x, y);
+            var e = grid.get(new CartesianCoords(x, y));
 
             var cell = canvas.group().transform({ x: x * cellw, y: y * cellh });
 
@@ -127,10 +130,10 @@ var draw = function () {
                     return;
 
                 // 'this' refers to a wrapper provided by SVGjs, so we have to go down to node to get the model
-                if (grid.get(this.node.model.x, this.node.model.y).type == 4 /* DEACTIVATED */)
+                if (grid.get(new CartesianCoords(this.node.model.x, this.node.model.y)).type == 4 /* DEACTIVATED */)
                     return;
                 var target = { x: this.node.model.x, y: this.node.model.y };
-                hover = floodAcquire(target, grid.get(target.x, target.y));
+                hover = floodAcquire(target, grid.get(new CartesianCoords(target.x, target.y)));
                 hover.forEach(function (t) {
                     var i = t.x + t.y * gridw;
                     gridRep[i].rect.attr({ fill: colorizer.highlightFromValue(grid.getFlat(i).type, grid.getFlat(i).value) });
@@ -139,7 +142,7 @@ var draw = function () {
                 if (disableMouse)
                     return;
                 var target = { x: this.node.model.x, y: this.node.model.y };
-                hover = floodAcquire(target, grid.get(target.x, target.y));
+                hover = floodAcquire(target, grid.get(new CartesianCoords(target.x, target.y)));
                 hover.forEach(function (t) {
                     var i = t.x + t.y * gridw;
                     gridRep[i].rect.attr({ fill: colorizer.fromValue(grid.getFlat(i).type, grid.getFlat(i).value) });
@@ -149,9 +152,9 @@ var draw = function () {
             var hammer = Hammer(rect.node, { preventDefault: true });
             hammer.on("dragstart swipestart", function (e) {
                 // 'this' refers to the DOM node directly here
-                if (grid.get(this.model.x, this.model.y).type != 4 /* DEACTIVATED */) {
+                if (grid.get(new CartesianCoords(this.model.x, this.model.y)).type != 4 /* DEACTIVATED */) {
                     var target = { x: this.model.x, y: this.model.y };
-                    selected = floodAcquire(target, grid.get(target.x, target.y));
+                    selected = floodAcquire(target, grid.get(new CartesianCoords(target.x, target.y)));
                 } else {
                     selected = [];
                 }
@@ -197,16 +200,16 @@ var advance = function () {
 
 var prune = function (start) {
     // see if we should delete this cell and surrounding cells
-    var targets = floodAcquire(start, grid.get(start.x, start.y));
-    if (targets.length == grid.get(start.x, start.y).value) {
-        if (grid.get(start.x, start.y).type == 4 /* DEACTIVATED */)
+    var targets = floodAcquire(start, grid.get(new CartesianCoords(start.x, start.y)));
+    if (targets.length == grid.get(new CartesianCoords(start.x, start.y)).value) {
+        if (grid.get(new CartesianCoords(start.x, start.y)).type == 4 /* DEACTIVATED */)
             return;
         targets.forEach(function (cell) {
-            if (grid.get(cell.x, cell.y).type == 2 /* REGULAR */) {
-                grid.set(cell.x, cell.y, new Tile(1 /* EMPTY */, -1));
+            if (grid.get(new CartesianCoords(cell.x, cell.y)).type == 2 /* REGULAR */) {
+                grid.set(new CartesianCoords(cell.x, cell.y), new Tile(1 /* EMPTY */, -1));
                 activeCells--;
-            } else if (grid.get(cell.x, cell.y).type == 5 /* LAVA */) {
-                grid.set(cell.x, cell.y, new Tile(4 /* DEACTIVATED */, grid.get(cell.x, cell.y).value));
+            } else if (grid.get(new CartesianCoords(cell.x, cell.y)).type == 5 /* LAVA */) {
+                grid.set(new CartesianCoords(cell.x, cell.y), new Tile(4 /* DEACTIVATED */, grid.get(new CartesianCoords(cell.x, cell.y)).value));
             }
 
             console.log(activeCells);
@@ -248,11 +251,11 @@ var pollDrag = function (e) {
             // if cell is not in original set and cell is not -1 then collision
             // if cell is not in original set and cell is -1 then no collision
             // if cell is in original set then no collsion
-            var cellIsOutofBounds = grid.get(cell.x, cell.y).type == 0 /* OUT_OF_BOUNDS */;
+            var cellIsOutofBounds = grid.get(new CartesianCoords(cell.x, cell.y)).type == 0 /* OUT_OF_BOUNDS */;
             var cellInOldSet = oldset.some(function (c) {
                 return c.x == cell.x && c.y == cell.y;
             });
-            var isCollision = cellIsOutofBounds || (!cellInOldSet && grid.get(cell.x, cell.y).type != 1 /* EMPTY */);
+            var isCollision = cellIsOutofBounds || (!cellInOldSet && grid.get(new CartesianCoords(cell.x, cell.y)).type != 1 /* EMPTY */);
             return isCollision;
         });
     }
@@ -260,13 +263,13 @@ var pollDrag = function (e) {
     function move(from, to) {
         // cache all the from values before clearing them
         var fromVals = from.map(function (cell) {
-            return grid.get(cell.x, cell.y);
+            return grid.get(new CartesianCoords(cell.x, cell.y));
         });
         from.forEach(function (cell) {
-            grid.set(cell.x, cell.y, new Tile(1 /* EMPTY */, -1));
+            grid.set(new CartesianCoords(cell.x, cell.y), new Tile(1 /* EMPTY */, -1));
         });
         to.forEach(function (cell, i) {
-            grid.set(cell.x, cell.y, new Tile(fromVals[i].type, fromVals[i].value));
+            grid.set(new CartesianCoords(cell.x, cell.y), new Tile(fromVals[i].type, fromVals[i].value));
         });
 
         for (var i = 0; i < from.length; i++) {
@@ -459,6 +462,8 @@ var init = function () {
             }
         }
     }
+
+    gridView = View.fromModel(grid);
 
     draw();
 
