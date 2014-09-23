@@ -151,7 +151,7 @@ var Colorizer = (function () {
         };
         this.scale = {};
         this.scale[1 /* EMPTY */] = chroma.scale(['#D7FAF3', '#F3F4E5', '#FFFFFF']);
-        this.scale[2 /* REGULAR */] = chroma.scale(['#4BF920', '#1DE5A2', '#48CC20', '#18BC49', '#0DAD6D']);
+        this.scale[2 /* REGULAR */] = chroma.scale(['#FFF', '#D1D0D7', '#FBCA04', '#1DE5A2', '#3692B9', '#615258', '#EB6420', '#C8FF00', '#46727F', '#1D1163']);
         this.scale[5 /* LAVA */] = chroma.scale(['#AE5750', '#F96541', '#FF7939']);
         this.scale[4 /* DEACTIVATED */] = chroma.scale(['#64585A', '#64585A']);
     }
@@ -203,7 +203,7 @@ var View;
 
             text.attr({
                 'fill': this.colorizer.foregroundFromColor(this.colorizer.fromTile(e)),
-                'font-size': cellw / 4 }).transform({ x: cellw / 2, y: cellh / 2 + text.attr('font-size') / 2 });
+                'font-size': cellw / 4 }).transform({ x: cellw / 2 - text.attr('font-size') / 4, y: cellh / 2 + text.attr('font-size') / 4 });
 
             // cache UI hooks
             cell.coords = new CartesianCoords(x, y);
@@ -288,7 +288,10 @@ var View;
                 'stroke': '#fff',
                 'stroke-width': 2 });
 
-            var text = cell.plain(e.type != 1 /* EMPTY */ ? e.value.toString() : "").fill({ color: '#fff' }).transform({ x: -3.5, y: 3.5 });
+            var text = cell.plain(e.type != 1 /* EMPTY */ ? e.value.toString() : "");
+            text.attr({
+                'fill': this.colorizer.foregroundFromColor(this.colorizer.fromTile(e)),
+                'font-size': radius / 1.5 }).transform({ x: -text.attr('font-size') / 3, y: text.attr('font-size') / 3 }); // offset starting point, which is bottom left
 
             // cache hooks for UI
             cell.coords = new AxialCoords(q, r);
@@ -1122,5 +1125,5 @@ var game;
 
 var init = function () {
     var canvas = SVG('screen').size(720, 720);
-    game = new HexGame(canvas);
+    game = new SquareGame(canvas);
 };
