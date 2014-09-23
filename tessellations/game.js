@@ -1,471 +1,1126 @@
-/// <reference path="lib/chroma-js.d.ts" />
-/// <reference path="lib/hammerjs.d.ts" />
-/// <reference path="lib/svgjs.d.ts" />
-/// <reference path="lib/utils.ts" />
-/// <reference path="./model.ts" />
-/// <reference path="./view.ts" />
-var grid;
-var gridView;
-var gridw = 0, gridh = 0;
-var gridRep = [];
-var cellw = 120;
-var cellh = 120;
-var maxval = 4;
-var canvas = null;
-var activeCells = 0;
-var level = 1;
-var fastdebug = false;
-var disableMouse = false;
+var TileType;
+(function (TileType) {
+    TileType[TileType["OUT_OF_BOUNDS"] = 0] = "OUT_OF_BOUNDS";
+    TileType[TileType["EMPTY"] = 1] = "EMPTY";
+    TileType[TileType["REGULAR"] = 2] = "REGULAR";
+    TileType[TileType["CONCRETE"] = 3] = "CONCRETE";
+    TileType[TileType["DEACTIVATED"] = 4] = "DEACTIVATED";
+    TileType[TileType["LAVA"] = 5] = "LAVA";
+})(TileType || (TileType = {}));
+;
 
-var hover = [];
-var selected = [];
 
-// weird to do this, but I want to instantiate this object array/hash with TileType vals
-// and I can't do that in the constructor like above, because JavaScript doesn't like periods
-// in its initializers.
-var enabled = (function () {
-    this[5 /* LAVA */] = false;
-    return this;
+var AxialCoords = (function () {
+    function AxialCoords(q, r) {
+        this.q = q;
+        this.r = r;
+    }
+    return AxialCoords;
 })();
 
-var colorizer = (function () {
-    var colorizer = { scale: null, fromValue: null, highlightFromValue: null, borderFromValue: null };
-
-    colorizer.scale = {};
-    colorizer.scale[2 /* REGULAR */] = chroma.scale(['#4BF920', '#1DE5A2', '#48CC20', '#18BC49', '#0DAD6D']);
-    colorizer.scale[5 /* LAVA */] = chroma.scale(['#AE5750', '#F96541', '#FF7939']);
-    colorizer.scale[4 /* DEACTIVATED */] = chroma.scale(['#64585A', '#64585A']);
-
-    colorizer.fromValue = function (t, v) {
-        if (v < 0)
-            return chroma('white').hex();
-        else
-            return this.scale[t](v / 9).hex();
-    };
-
-    colorizer.highlightFromValue = function (t, v) {
-        if (v < 0)
-            return chroma('white').hex();
-        else
-            return this.scale[t](v / 9).brighter().hex();
-    };
-
-    colorizer.borderFromValue = function (t, v) {
-        if (v < 0)
-            return chroma('white').hex();
-        else
-            return this.scale[t](v / 9).darker().hex();
-    };
-
-    return colorizer;
+var CartesianCoords = (function () {
+    function CartesianCoords(x, y) {
+        this.x = x;
+        this.y = y;
+    }
+    return CartesianCoords;
 })();
 
-// translation of practical flood fill implementation as described on
-// http://en.wikipedia.org/wiki/Flood_fill
-var floodAcquire = function (start, tile) {
-    var cluster = [];
-    var marked = { get: null, set: null };
-    marked.get = function (x, y) {
-        return this[x + y * gridw] === undefined ? false : this[x + y * gridw];
-    };
-    marked.set = function (x, y) {
-        this[x + y * gridw] = true;
-    };
-    var Q = [];
-    if (grid.get(new CartesianCoords(start.x, start.y)) != tile)
-        return [];
-    Q.push(start);
-    while (Q.length > 0) {
-        var n = Q.shift();
-        var c = new CartesianCoords(n.x, n.y);
-        if (grid.get(c).value == tile.value && grid.get(c).type == tile.type && !marked.get(n.x, n.y)) {
-            var w = { x: n.x, y: n.y };
-            var e = { x: n.x, y: n.y };
+var Tile = (function () {
+    function Tile(t, v) {
+        this.type = t;
+        this.value = v;
+        this.selected = false;
+    }
+    return Tile;
+})();
 
-            while (grid.get(new CartesianCoords(w.x - 1, w.y)).value == tile.value && grid.get(new CartesianCoords(w.x - 1, w.y)).type == tile.type) {
-                w.x--;
-            }
-
-            while (grid.get(new CartesianCoords(e.x + 1, e.y)).value == tile.value && grid.get(new CartesianCoords(e.x + 1, e.y)).type == tile.type) {
-                e.x++;
-            }
-
-            for (var x = w.x; x < e.x + 1; x++) {
-                var nn = { x: x, y: n.y };
-                marked.set(nn.x, nn.y);
-                cluster.push(nn);
-                var north = { x: nn.x, y: nn.y - 1 };
-                var south = { x: nn.x, y: nn.y + 1 };
-                if (grid.get(new CartesianCoords(north.x, north.y)).value == tile.value && grid.get(new CartesianCoords(north.x, north.y)).type == tile.type)
-                    Q.push(north);
-                if (grid.get(new CartesianCoords(south.x, south.y)).value == tile.value && grid.get(new CartesianCoords(south.x, south.y)).type == tile.type)
-                    Q.push(south);
+var Model;
+(function (Model) {
+    var Square = (function () {
+        function Square(gridw, gridh, DefaultTile, OutOfBoundsTile) {
+            this.outOfBoundsTile = OutOfBoundsTile;
+            this.gridw = gridw;
+            this.gridh = gridh;
+            this.size = gridw * gridh;
+            this.grid = [];
+            for (var i = 0; i < this.gridw * this.gridh; i++) {
+                this.grid.push(DefaultTile);
             }
         }
+        Square.prototype.toFlat = function (x, y) {
+            return x + y * this.gridw;
+        };
+
+        Square.prototype.get = function (c) {
+            return c.y >= 0 && c.x >= 0 && c.x < this.gridw && c.y < this.gridh ? this.grid[c.x + c.y * this.gridw] : this.outOfBoundsTile;
+        };
+
+        Square.prototype.getFlat = function (i) {
+            return i >= 0 && i < this.gridw * this.gridh ? this.grid[i] : this.outOfBoundsTile;
+        };
+
+        Square.prototype.set = function (c, tile) {
+            if (c.y >= 0 && c.x >= 0 && c.x < this.gridw && c.y < this.gridh) {
+                this.grid[c.x + c.y * this.gridw] = tile;
+            }
+        };
+
+        Square.prototype.setFlat = function (i, tile) {
+            if (i >= 0 && i < this.gridw * this.gridh) {
+                this.grid[i] = tile;
+            }
+        };
+
+        Square.prototype.getTileArray = function () {
+            return this.grid;
+        };
+        return Square;
+    })();
+    Model.Square = Square;
+
+    var Hex = (function () {
+        function Hex(gridr, DefaultTile, OutOfBoundsTile) {
+            this.grid = [];
+            this.gridr = gridr;
+            this.outOfBoundsTile = OutOfBoundsTile;
+            for (var r = -this.gridr; r <= this.gridr; r++) {
+                for (var q = -this.gridr; q <= this.gridr; q++) {
+                    if (Math.abs(r + q) > this.gridr)
+                        this.grid.push(OutOfBoundsTile);
+                    else
+                        this.grid.push(DefaultTile);
+                }
+            }
+        }
+        // we need to make sure diameter is always odd...
+        // in hex grid units
+        Hex.prototype.diameter = function () {
+            return (this.gridr * 2 + 1);
+        };
+
+        // q, r are relative to the center (IE: ( gridr, gridr ) in grid), convert it into the absolute index
+        Hex.prototype.toFlat = function (q, r) {
+            var x = r + this.gridr;
+            var z = q + this.gridr;
+            return x + z * (this.diameter());
+        };
+
+        Hex.prototype.get = function (c) {
+            return Math.abs(c.q) <= this.gridr && Math.abs(c.r) <= this.gridr ? this.grid[this.toFlat(c.q, c.r)] : this.outOfBoundsTile;
+        };
+
+        Hex.prototype.getFlat = function (i) {
+            return i >= 0 && i < this.grid.length ? this.grid[i] : this.outOfBoundsTile;
+        };
+
+        Hex.prototype.set = function (c, tile) {
+            if (Math.abs(c.q) <= this.gridr && Math.abs(c.r) <= this.gridr) {
+                this.grid[this.toFlat(c.q, c.r)] = tile;
+            }
+        };
+
+        Hex.prototype.setFlat = function (i, tile) {
+            if (i >= 0 && i < this.grid.length) {
+                this.grid[i] = tile;
+            }
+        };
+
+        Hex.prototype.getTileArray = function () {
+            return this.grid;
+        };
+        return Hex;
+    })();
+    Model.Hex = Hex;
+})(Model || (Model = {}));
+/// <reference path="lib/chroma-js.d.ts" />
+/// <reference path="lib/svgjs.d.ts" />
+/// <reference path="./model.ts" />
+
+var Colorizer = (function () {
+    function Colorizer() {
+        this.highlightFromTile = function (t) {
+            if (t.type == 1 /* EMPTY */) {
+                return this.scale[t.type](t.value / 9).hex();
+            } else {
+                return this.scale[t.type](t.value / 9).brighter().hex();
+            }
+        };
+        this.foregroundFromColor = function (c) {
+            return chroma(c).lab()[0] > 70 ? '#000' : '#fff';
+        };
+        this.scale = {};
+        this.scale[1 /* EMPTY */] = chroma.scale(['#D7FAF3', '#F3F4E5', '#FFFFFF']);
+        this.scale[2 /* REGULAR */] = chroma.scale(['#4BF920', '#1DE5A2', '#48CC20', '#18BC49', '#0DAD6D']);
+        this.scale[5 /* LAVA */] = chroma.scale(['#AE5750', '#F96541', '#FF7939']);
+        this.scale[4 /* DEACTIVATED */] = chroma.scale(['#64585A', '#64585A']);
     }
-    return cluster;
-};
+    Colorizer.prototype.fromTile = function (t) {
+        return this.scale[t.type](t.value / 9).hex();
+    };
+    return Colorizer;
+})();
 
-var draw = function () {
-    canvas.clear();
+// quick-n-dirty
+var Vec2 = (function () {
+    function Vec2(x, y) {
+        this.x = x;
+        this.y = y;
+    }
+    Vec2.prototype.toString = function () {
+        return this.x + "," + this.y;
+    };
+    return Vec2;
+})();
 
-    // draw cells
-    gridRep = [];
-    for (var y = 0; y < gridh; y++) {
-        for (var x = 0; x < gridw; x++) {
-            var model = { x: x, y: y, i: x + y * gridw };
-            var e = grid.get(new CartesianCoords(x, y));
+var View;
+(function (View) {
+    function fromModel(grid) {
+        if (grid instanceof Model.Square)
+            return new SquareView(grid);
+        else if (grid instanceof Model.Hex)
+            return new HexView(grid);
+    }
+    View.fromModel = fromModel;
+
+    var SquareView = (function () {
+        function SquareView(square) {
+            this.model = square;
+            this.colorizer = new Colorizer();
+        }
+        SquareView.prototype.drawTile = function (canvas, x, y, e) {
+            var cellw = Math.floor(canvas.width() / this.model.gridw), cellh = Math.floor(canvas.width() / this.model.gridh);
 
             var cell = canvas.group().transform({ x: x * cellw, y: y * cellh });
 
             var rect = cell.rect(cellw, cellh);
 
-            rect.node.model = model; // so the DOM can refer to this to get its x/y/i/whatever
-
             rect.attr({
-                'fill': colorizer.fromValue(e.type, e.value),
-                'fill-opacity': e.type == 1 /* EMPTY */ ? 0 : 1,
-                'id': 'cell' + model.i }).mouseover(function () {
-                if (disableMouse)
+                'fill': this.colorizer.fromTile(e),
+                'fill-opacity': e.type == 1 /* EMPTY */ ? 0 : 1 });
+
+            var text = cell.plain(e.type != 1 /* EMPTY */ ? e.value.toString() : "");
+
+            text.attr({
+                'fill': this.colorizer.foregroundFromColor(this.colorizer.fromTile(e)),
+                'font-size': cellw / 4 }).transform({ x: cellw / 2, y: cellh / 2 + text.attr('font-size') / 2 });
+
+            // cache UI hooks
+            cell.coords = new CartesianCoords(x, y);
+            cell.rect = rect;
+            cell.text = text;
+
+            return cell;
+        };
+
+        SquareView.prototype.draw = function (canvas) {
+            if (this.model == null)
+                return;
+
+            this.cells = [];
+
+            for (var y = 0; y < this.model.gridh; y++) {
+                for (var x = 0; x < this.model.gridw; x++) {
+                    var e = this.model.get(new CartesianCoords(x, y));
+                    this.cells[this.model.toFlat(x, y)] = this.drawTile(canvas, x, y, e);
+                }
+            }
+        };
+
+        SquareView.prototype.getSVGElements = function () {
+            return this.cells;
+        };
+
+        SquareView.prototype.getSVGElement = function (c) {
+            return c.y >= 0 && c.x >= 0 && c.x < this.model.gridw && c.y < this.model.gridh ? this.cells[this.model.toFlat(c.x, c.y)] : null;
+        };
+        return SquareView;
+    })();
+    View.SquareView = SquareView;
+
+    var HexView = (function () {
+        function HexView(hex) {
+            this.model = hex;
+            this.colorizer = new Colorizer();
+        }
+        HexView.prototype.toAbsX = function (q) {
+            return q + this.model.gridr;
+        };
+
+        HexView.prototype.toAbsY = function (r) {
+            return r + this.model.gridr;
+        };
+
+        HexView.prototype.drawTile = function (canvas, q, r, e) {
+            var fudgeMargin = 10;
+            var size = (canvas.attr("width") - fudgeMargin) / this.model.diameter();
+
+            // size is the diameter of the inscribed circle. radius refers to the radius of the
+            // circumscribed circle
+            var radius = size / Math.sin(60 * Math.PI / 180) / 2;
+
+            // distance between adjacent (heightwise) hex cells
+            var yd = radius * Math.cos(60 * Math.PI / 180);
+
+            // distance between adjacent (withwise) hex cells
+            var xd = radius * Math.sin(60 * Math.PI / 180);
+
+            var yOffset = radius;
+            var xOffset = xd;
+
+            var x = this.toAbsX(q);
+            var y = this.toAbsY(r);
+
+            var center_x = size * x + xd * r + xOffset;
+            var center_y = (yd + radius) * y + yOffset;
+
+            var cell = canvas.group().transform({ x: center_x, y: center_y });
+
+            var pts = [new Vec2(0, -radius), new Vec2(xd, -yd), new Vec2(xd, yd), new Vec2(0, radius), new Vec2(-xd, yd), new Vec2(-xd, -yd)];
+            var ptstr = pts.reduce(function (p1, p2, i, v) {
+                return p1.toString() + " " + p2.toString();
+            }, "");
+
+            var hex = cell.polygon(ptstr);
+
+            hex.attr({
+                'fill': this.colorizer.fromTile(e),
+                'stroke': '#fff',
+                'stroke-width': 2 });
+
+            var text = cell.plain(e.type != 1 /* EMPTY */ ? e.value.toString() : "").fill({ color: '#fff' }).transform({ x: -3.5, y: 3.5 });
+
+            // cache hooks for UI
+            cell.coords = new AxialCoords(q, r);
+            cell.hex = hex;
+
+            return cell;
+        };
+
+        HexView.prototype.draw = function (canvas) {
+            if (this.model == null)
+                return;
+
+            this.cells = [];
+
+            for (var r = -this.model.gridr; r <= this.model.gridr; r++) {
+                for (var q = -this.model.gridr; q <= this.model.gridr; q++) {
+                    var e = this.model.get(new AxialCoords(q, r));
+                    if (e.type == 0 /* OUT_OF_BOUNDS */) {
+                        this.cells[this.model.toFlat(q, r)] = null; // standin
+                    }
+                }
+            }
+
+            for (var r = -this.model.gridr; r <= this.model.gridr; r++) {
+                for (var q = -this.model.gridr; q <= this.model.gridr; q++) {
+                    var e = this.model.get(new AxialCoords(q, r));
+                    if (e.type == 1 /* EMPTY */) {
+                        this.cells[this.model.toFlat(q, r)] = this.drawTile(canvas, q, r, e);
+                    } else if (e.type != 0 /* OUT_OF_BOUNDS */) {
+                        // just draw an empty tile anyway
+                        this.drawTile(canvas, q, r, new Tile(1 /* EMPTY */, -1));
+                    }
+                }
+            }
+
+            for (var r = -this.model.gridr; r <= this.model.gridr; r++) {
+                for (var q = -this.model.gridr; q <= this.model.gridr; q++) {
+                    var e = this.model.get(new AxialCoords(q, r));
+                    if (e.type == 2 /* REGULAR */) {
+                        this.cells[this.model.toFlat(q, r)] = this.drawTile(canvas, q, r, e);
+                    }
+                }
+            }
+        };
+
+        HexView.prototype.getSVGElements = function () {
+            return this.cells;
+        };
+
+        HexView.prototype.getSVGElement = function (c) {
+            return Math.abs(c.q) <= this.model.gridr && Math.abs(c.r) <= this.model.gridr ? this.cells[this.model.toFlat(c.q, c.r)] : null;
+        };
+        return HexView;
+    })();
+    View.HexView = HexView;
+})(View || (View = {}));
+/// <reference path="./model.ts" />
+/// <reference path="./view.ts" />
+var MIN_VAL = 2;
+var Utils = (function () {
+    function Utils() {
+    }
+    Utils.deepCopy = function (src) {
+        var dst = {};
+        var keys = Object.keys(src);
+        keys.map(function (key) {
+            return dst[key] = src[key];
+        });
+        return dst;
+    };
+    return Utils;
+})();
+/// <reference path="lib/chroma-js.d.ts" />
+/// <reference path="lib/hammerjs.d.ts" />
+/// <reference path="lib/svgjs.d.ts" />
+/// <reference path="lib/utils.ts" />
+/// <reference path="./game.ts" />
+var HexGame = (function () {
+    function HexGame(canvas) {
+        var _this = this;
+        if (canvas == null) {
+            canvas = SVG('screen').size(720, 720);
+            console.log("no canvas supplied, starting with default canvas with dims " + canvas.width() + ", " + canvas.height());
+        }
+
+        this.canvas = canvas;
+
+        var gp = {
+            level: 1,
+            gridw: 6,
+            gridh: 6,
+            maxVal: 5
+        };
+
+        this.init(gp);
+
+        Hammer(this.canvas.node, { preventDefault: true }).on("dragend swipeend", function (e) {
+            _this.onDrag(e, _this);
+        });
+    }
+    HexGame.prototype.draw = function () {
+        this.canvas.clear();
+        this.gridView.draw(this.canvas);
+    };
+
+    HexGame.prototype.extendUI = function () {
+        var cells = this.gridView.getSVGElements();
+
+        var game = this;
+        cells.forEach(function (cell, i) {
+            if (cell === null)
+                return;
+            cell.mouseover(function () {
+                if (game.gameState.disableMouse)
                     return;
 
-                // 'this' refers to a wrapper provided by SVGjs, so we have to go down to node to get the model
-                if (grid.get(new CartesianCoords(this.node.model.x, this.node.model.y)).type == 4 /* DEACTIVATED */)
+                // 'game' refers to a wrapper provided by SVGjs, so we have to go down to node to get the model
+                if (game.grid.get(cell.coords).type == 4 /* DEACTIVATED */)
                     return;
-                var target = { x: this.node.model.x, y: this.node.model.y };
-                hover = floodAcquire(target, grid.get(new CartesianCoords(target.x, target.y)));
+                var hover = game.floodAcquire(cell.coords, game.grid.get(cell.coords));
                 hover.forEach(function (t) {
-                    var i = t.x + t.y * gridw;
-                    gridRep[i].rect.attr({ fill: colorizer.highlightFromValue(grid.getFlat(i).type, grid.getFlat(i).value) });
+                    game.gridView.getSVGElement(t).hex.attr({ fill: game.gridView.colorizer.highlightFromTile(game.grid.getFlat(i)) });
                 });
             }).mouseout(function () {
-                if (disableMouse)
+                if (game.gameState.disableMouse)
                     return;
-                var target = { x: this.node.model.x, y: this.node.model.y };
-                hover = floodAcquire(target, grid.get(new CartesianCoords(target.x, target.y)));
+                var hover = game.floodAcquire(cell.coords, game.grid.get(cell.coords));
                 hover.forEach(function (t) {
-                    var i = t.x + t.y * gridw;
-                    gridRep[i].rect.attr({ fill: colorizer.fromValue(grid.getFlat(i).type, grid.getFlat(i).value) });
+                    game.gridView.getSVGElement(t).hex.attr({ fill: game.gridView.colorizer.fromTile(game.grid.getFlat(i)) });
                 });
             });
-
-            var hammer = Hammer(rect.node, { preventDefault: true });
+            var hammer = Hammer(cell.node, { preventDefault: true });
             hammer.on("dragstart swipestart", function (e) {
-                // 'this' refers to the DOM node directly here
-                if (grid.get(new CartesianCoords(this.model.x, this.model.y)).type != 4 /* DEACTIVATED */) {
-                    var target = { x: this.model.x, y: this.model.y };
-                    selected = floodAcquire(target, grid.get(new CartesianCoords(target.x, target.y)));
+                if (game.grid.get(cell.coords).type != 4 /* DEACTIVATED */) {
+                    game.gameState.selected = game.floodAcquire(cell.coords, game.grid.get(cell.coords));
                 } else {
-                    selected = [];
+                    game.gameState.selected = [];
                 }
             });
-
-            var text = cell.plain(e.type != 1 /* EMPTY */ ? e.value.toString() : "").fill({ color: '#ffffff' }).transform({ x: cellw / 2, y: cellh / 2 });
-
-            gridRep.push({ cell: cell, rect: rect, text: text });
-        }
-    }
-};
-
-var update = function () {
-    gridRep.forEach(function (rep, i) {
-        if (!grid.getFlat(i)) {
-            console.log("tile " + i + " is undefined");
-            return;
-        }
-        rep.text.plain(grid.getFlat(i).type != 1 /* EMPTY */ ? grid.getFlat(i).value.toString() : "");
-        rep.rect.attr({ fill: colorizer.fromValue(grid.getFlat(i).type, grid.getFlat(i).value) });
-    });
-};
-
-var advance = function () {
-    level++;
-
-    if (fastdebug) {
-        cellw = Math.round(cellw * 0.5);
-        cellh = Math.round(cellh * 0.5);
-    } else {
-        cellw = Math.round(cellw * 0.8);
-        cellh = Math.round(cellh * 0.8);
-    }
-
-    maxval++;
-
-    if (level > 3 || fastdebug) {
-        enabled[5 /* LAVA */] = true;
-    }
-
-    init();
-};
-
-var prune = function (start) {
-    // see if we should delete this cell and surrounding cells
-    var targets = floodAcquire(start, grid.get(new CartesianCoords(start.x, start.y)));
-    if (targets.length == grid.get(new CartesianCoords(start.x, start.y)).value) {
-        if (grid.get(new CartesianCoords(start.x, start.y)).type == 4 /* DEACTIVATED */)
-            return;
-        targets.forEach(function (cell) {
-            if (grid.get(new CartesianCoords(cell.x, cell.y)).type == 2 /* REGULAR */) {
-                grid.set(new CartesianCoords(cell.x, cell.y), new Tile(1 /* EMPTY */, -1));
-                activeCells--;
-            } else if (grid.get(new CartesianCoords(cell.x, cell.y)).type == 5 /* LAVA */) {
-                grid.set(new CartesianCoords(cell.x, cell.y), new Tile(4 /* DEACTIVATED */, grid.get(new CartesianCoords(cell.x, cell.y)).value));
-            }
-
-            console.log(activeCells);
         });
-    }
+    };
 
-    // this is a bad cross-cutting dependency
-    if (activeCells == 0) {
-        alert("great job, you won!");
-        advance();
-    }
-};
-
-var pollDrag = function (e) {
-    if (selected == null || selected.length == 0) {
-        console.log("nothing selected");
-        return;
-    }
-
-    var up = false, down = false, left = false, right = false;
-
-    if (Math.abs(e.gesture.deltaY) > Math.abs(e.gesture.deltaX)) {
-        up = e.gesture.deltaY < 0;
-        down = !up;
-    } else {
-        left = e.gesture.deltaX < 0;
-        right = !left;
-    }
-
-    function displace(set, direction) {
-        return set.map(function (cell) {
-            return { x: cell.x + direction.x, y: cell.y + direction.y };
-        });
-    }
-
-    function checkCollision(newset, oldset) {
-        return newset.map(function (cell, i) {
-            // if cell is out of bounds, then, collision
-            // if cell is not in original set and cell is not -1 then collision
-            // if cell is not in original set and cell is -1 then no collision
-            // if cell is in original set then no collsion
-            var cellIsOutofBounds = grid.get(new CartesianCoords(cell.x, cell.y)).type == 0 /* OUT_OF_BOUNDS */;
-            var cellInOldSet = oldset.some(function (c) {
-                return c.x == cell.x && c.y == cell.y;
-            });
-            var isCollision = cellIsOutofBounds || (!cellInOldSet && grid.get(new CartesianCoords(cell.x, cell.y)).type != 1 /* EMPTY */);
-            return isCollision;
-        });
-    }
-
-    function move(from, to) {
-        // cache all the from values before clearing them
-        var fromVals = from.map(function (cell) {
-            return grid.get(new CartesianCoords(cell.x, cell.y));
-        });
-        from.forEach(function (cell) {
-            grid.set(new CartesianCoords(cell.x, cell.y), new Tile(1 /* EMPTY */, -1));
-        });
-        to.forEach(function (cell, i) {
-            grid.set(new CartesianCoords(cell.x, cell.y), new Tile(fromVals[i].type, fromVals[i].value));
-        });
-
-        for (var i = 0; i < from.length; i++) {
-            var f = gridRep[from[i].x + gridw * from[i].y].cell;
-            var t = gridRep[to[i].x + gridw * to[i].y].cell;
-
-            disableMouse = true;
-
-            var anim = f.animate(100, '>', 0).move(t.transform('x'), t.transform('y'));
-
-            if (i == 0) {
-                anim.after(function () {
-                    disableMouse = false;
-                    prune(to[0]);
-                    update();
-                    draw();
-                });
-            }
+    HexGame.prototype.update = function () {
+        if (this.clearedStage()) {
+            this.advance();
         }
-    }
+    };
 
-    prune(selected[0]);
-    if (selected[0].type == 1 /* EMPTY */) {
-        update();
-        draw();
-        return;
-    }
+    HexGame.prototype.init = function (gp) {
+        var gs = {
+            activeCells: gp.maxVal * (gp.maxVal + 1) / 2 - 1,
+            disableMouse: false,
+            selected: []
+        };
 
-    if (up) {
-        var oldset = selected.map(Utils.deepCopy);
-        var newset = oldset.map(Utils.deepCopy);
-        while (checkCollision(newset, oldset).every(function (col) {
-            return col == false;
-        })) {
-            oldset = newset.map(Utils.deepCopy); // oldset = newset (deep copy)
-            newset = displace(oldset, { x: 0, y: -1 });
-        }
-        move(selected, oldset);
-        selected = oldset; // shallow copy is fine
-    } else if (down) {
-        var oldset = selected.map(Utils.deepCopy);
-        var newset = oldset.map(Utils.deepCopy);
-        while (checkCollision(newset, oldset).every(function (col) {
-            return col == false;
-        })) {
-            oldset = newset.map(Utils.deepCopy); // oldset = newset (deep copy)
-            newset = displace(oldset, { x: 0, y: 1 });
-        }
-        move(selected, oldset);
-        selected = oldset; // shallow copy is fine
-    }
+        this.grid = new Model.Hex(Math.floor(gp.gridw / 2), new Tile(1 /* EMPTY */, 0), new Tile(0 /* OUT_OF_BOUNDS */, -1));
 
-    if (left) {
-        var oldset = selected.map(Utils.deepCopy);
-        var newset = oldset.map(Utils.deepCopy);
-        while (checkCollision(newset, oldset).every(function (col) {
-            return col == false;
-        })) {
-            oldset = newset.map(Utils.deepCopy);
-            newset = displace(oldset, { x: -1, y: 0 });
-        }
-        move(selected, oldset);
-        selected = oldset; // shallow copy is fine
-    } else if (right) {
-        var oldset = selected.map(Utils.deepCopy);
-        var newset = oldset.map(Utils.deepCopy);
-        while (checkCollision(newset, oldset).every(function (col) {
-            return col == false;
-        })) {
-            oldset = newset.map(Utils.deepCopy);
-            newset = displace(oldset, { x: 1, y: 0 });
-        }
-        move(selected, oldset);
-        selected = oldset; // shallow copy is fine
-    }
-};
+        this.gameParams = gp;
+        this.gameState = gs;
 
-var init = function () {
-    if (canvas == null)
-        canvas = SVG('screen').size(720, 720);
+        this.procGenGrid(this.grid, gp);
+        this.gridView = View.fromModel(this.grid);
 
-    gridw = Math.floor(canvas.width() / cellw);
-    gridh = Math.floor(canvas.height() / cellh);
+        this.draw();
+        this.extendUI();
+    };
 
-    console.log("new grid size is " + gridw + "x" + gridh);
-
-    var tiles = [];
-
-    grid = new Model.Square(gridw, gridh, new Tile(1 /* EMPTY */, 0), new Tile(0 /* OUT_OF_BOUNDS */, -1));
-
-    for (var i = 0; i < gridw * gridh; i++) {
-        var val = Math.round(Math.random() * (maxval - 2) + 2);
-        grid.setFlat(i, new Tile(2 /* REGULAR */, val));
-        if (tiles[val] == null) {
-            tiles[val] = 0;
-        }
-        tiles[val]++;
-    }
-
-    for (i = 0; i < gridw * gridh; i++) {
-        if (Math.random() > 0.4) {
-            if (tiles[grid.getFlat(i).value] > grid.getFlat(i).value) {
-                tiles[grid.getFlat(i).value]--;
-                grid.setFlat(i, new Tile(1 /* EMPTY */, -1));
-            }
-        }
-    }
-
-    for (i = 2; i <= maxval; i++) {
-        if (tiles[i] > i) {
-            var count = tiles[i];
-            for (var j = 0; j < gridw * gridh && tiles[i] > i; j++) {
-                if (grid.getFlat(j).value == i) {
-                    grid.setFlat(j, new Tile(1 /* EMPTY */, -1));
-                    tiles[i]--;
-                }
-            }
-        }
-    }
-
-    for (i = 2; i <= maxval; i++) {
-        if (tiles[i] < i) {
-            var count = tiles[i];
-            while (tiles[i] < i) {
-                var randIndex = Math.round(Math.random() * (gridw * gridh - 1));
-                if (grid.getFlat(randIndex).type == 1 /* EMPTY */) {
-                    grid.setFlat(randIndex, new Tile(2 /* REGULAR */, i));
-                    tiles[i]++;
-                }
-            }
-        }
-    }
-
-    // count active cells
-    activeCells = 0;
-    for (i = 2; i <= maxval; i++) {
-        if (tiles[i]) {
-            activeCells += tiles[i];
-        } else {
-            console.log("bad state:" + i + " is null");
-        }
-    }
-
-    if (enabled[5 /* LAVA */]) {
-        tiles = [];
-        for (i = 0; i < gridw * gridh; i++) {
-            if (grid.getFlat(i).type == 1 /* EMPTY */) {
-                if (Math.random() > 0.4) {
-                    var val = Math.round(Math.random() * (maxval - 4) + 2);
-                    grid.setFlat(i, new Tile(5 /* LAVA */, val));
-                    if (tiles[val] == null) {
-                        tiles[val] = 0;
-                    }
-                    tiles[val]++;
-                }
-            }
+    // procedurally generate a playable hex grid
+    // the grid must:
+    // 1) have n of tiles labeled n.
+    // 2) have enough empty spaces to be tractable (and fun)
+    HexGame.prototype.procGenGrid = function (grid, gp) {
+        // keep track of how many tiles there are for each number, indexed by number
+        var count = [];
+        for (var i = MIN_VAL; i <= gp.maxVal; i++) {
+            count[i] = 0;
         }
 
-        for (i = 0; i < gridw * gridh; i++) {
+        for (var i = 0; i < grid.getTileArray().length; i++) {
+            if (grid.getFlat(i).type == 0 /* OUT_OF_BOUNDS */)
+                continue;
+            var val = Math.round(Math.random() * (gp.maxVal - MIN_VAL) + MIN_VAL);
+            count[val]++;
+            grid.setFlat(i, new Tile(2 /* REGULAR */, val));
+        }
+
+        for (i = 0; i < grid.getTileArray().length; i++) {
             if (Math.random() > 0.4) {
-                if (grid.getFlat(i).type == 5 /* LAVA */ && tiles[grid.getFlat(i).value] > grid.getFlat(i).value) {
-                    tiles[grid.getFlat(i).value]--;
+                if (count[grid.getFlat(i).value] > grid.getFlat(i).value) {
+                    count[grid.getFlat(i).value]--;
                     grid.setFlat(i, new Tile(1 /* EMPTY */, -1));
                 }
             }
         }
 
-        for (i = 2; i <= maxval; i++) {
-            if (tiles[i] > i) {
-                var count = tiles[i];
-                for (var j = 0; j < gridw * gridh && tiles[i] > i; j++) {
-                    if (grid.getFlat(j).type == 5 /* LAVA */ && grid.getFlat(j).value == i) {
+        for (i = MIN_VAL; i <= gp.maxVal; i++) {
+            if (count[i] > i) {
+                for (var j = 0; j < grid.getTileArray().length && count[i] > i; j++) {
+                    if (grid.getFlat(j).value == i) {
                         grid.setFlat(j, new Tile(1 /* EMPTY */, -1));
-                        tiles[i]--;
+                        count[i]--;
                     }
                 }
             }
         }
 
-        for (i = 2; i <= maxval; i++) {
-            if (tiles[i] < i) {
-                var count = tiles[i];
-                while (tiles[i] < i) {
-                    var randIndex = Math.round(Math.random() * (gridw * gridh - 1));
+        for (i = MIN_VAL; i <= gp.maxVal; i++) {
+            if (count[i] < i) {
+                while (count[i] < i) {
+                    var randIndex = Math.round(Math.random() * (grid.getTileArray().length - 1));
                     if (grid.getFlat(randIndex).type == 1 /* EMPTY */) {
-                        grid.setFlat(randIndex, new Tile(5 /* LAVA */, i));
-                        tiles[i]++;
+                        grid.setFlat(randIndex, new Tile(2 /* REGULAR */, i));
+                        count[i]++;
                     }
                 }
             }
         }
+    };
+
+    HexGame.prototype.floodAcquire = function (start, tile) {
+        var cluster = [];
+        var marked = { get: null, set: null };
+
+        marked.get = function (key) {
+            return this[JSON.stringify(key)] === undefined ? false : this[JSON.stringify(key)];
+        };
+        marked.set = function (key) {
+            this[JSON.stringify(key)] = true;
+        };
+
+        var Q = [];
+        if (this.grid.get(new AxialCoords(start.q, start.r)) != tile)
+            return [];
+        Q.push(start);
+        while (Q.length > 0) {
+            var n = Q.shift();
+            if (this.grid.get(n).value == tile.value && this.grid.get(n).type == tile.type && !marked.get(n)) {
+                var w = new AxialCoords(n.q, n.r);
+                var e = new AxialCoords(n.q, n.r);
+
+                while (this.grid.get(new AxialCoords(w.q - 1, w.r)).value == tile.value && this.grid.get(new AxialCoords(w.q - 1, w.r)).type == tile.type) {
+                    w.q--;
+                }
+
+                while (this.grid.get(new AxialCoords(e.q + 1, e.r)).value == tile.value && this.grid.get(new AxialCoords(e.q + 1, e.r)).type == tile.type) {
+                    e.q++;
+                }
+
+                for (var q = w.q; q <= e.q; q++) {
+                    var nn = new AxialCoords(q, n.r);
+                    marked.set(nn);
+                    cluster.push(nn);
+
+                    var nw = new AxialCoords(nn.q, nn.r - 1);
+                    var ne = new AxialCoords(nn.q + 1, nn.r - 1);
+                    var sw = new AxialCoords(nn.q - 1, nn.r + 1);
+                    var se = new AxialCoords(nn.q, nn.r + 1);
+
+                    if (this.grid.get(nw).value == tile.value && this.grid.get(nw).type == tile.type)
+                        Q.push(nw);
+                    if (this.grid.get(ne).value == tile.value && this.grid.get(ne).type == tile.type)
+                        Q.push(ne);
+                    if (this.grid.get(sw).value == tile.value && this.grid.get(sw).type == tile.type)
+                        Q.push(sw);
+                    if (this.grid.get(se).value == tile.value && this.grid.get(se).type == tile.type)
+                        Q.push(se);
+                }
+            }
+        }
+        return cluster;
+    };
+
+    HexGame.prototype.prune = function (start, postCallback) {
+        this.draw(); // sync model and view/DOM elements -- this is important, otherwise the view will be outdated and animations won't play right!!!
+        var startTile = this.grid.get(start);
+        var group = this.floodAcquire(start, startTile);
+        if (group.length == startTile.value) {
+            if (startTile.type == 4 /* DEACTIVATED */)
+                return;
+            var game = this;
+            group.forEach(function (cell, i) {
+                // each Tile should have its own "prune" behavior
+                if (game.grid.get(cell).type == 2 /* REGULAR */) {
+                    game.grid.set(cell, new Tile(1 /* EMPTY */, -1));
+                    var c = game.gridView.getSVGElement(cell);
+                    c.animate(200, '>', 0).scale(0, 0).after(function () {
+                        game.gameState.activeCells--;
+                        if (i == group.length - 1) {
+                            postCallback();
+                        }
+                    });
+                } else if (game.grid.get(cell).type == 5 /* LAVA */) {
+                    game.grid.set(cell, new Tile(4 /* DEACTIVATED */, game.grid.get(cell).value));
+                }
+            });
+        } else {
+            postCallback();
+        }
+    };
+
+    HexGame.prototype.clearedStage = function () {
+        return this.gameState.activeCells == 0;
+    };
+
+    HexGame.prototype.advance = function () {
+        var gp = Utils.deepCopy(this.gameParams);
+        gp.level++;
+
+        gp.gridw = Math.floor((gp.level + 4) * 1.2);
+        gp.gridh = Math.floor((gp.level + 4) * 1.2);
+
+        gp.maxVal = gp.level + 3;
+
+        this.init(gp);
+    };
+
+    HexGame.prototype.onDrag = function (e, game) {
+        var selected = game.gameState.selected;
+        if (selected == null || selected.length == 0) {
+            return;
+        }
+
+        var nw = false, ne = false, west = false, east = false, sw = false, se = false;
+
+        var n_vec = { x: 0, y: -1 }, ne_vec = { x: Math.sqrt(3) / 2, y: -0.5 }, se_vec = { x: Math.sqrt(3) / 2, y: 0.5 }, s_vec = { x: 0, y: 1 }, sw_vec = { x: -Math.sqrt(3) / 2, y: 0.5 }, nw_vec = { x: -Math.sqrt(3) / 2, y: -0.5 };
+
+        // returns whether or not B is between A and C
+        // http://stackoverflow.com/a/17497339
+        // if A cross C and A cross B are in the same direction, then we have either A->C->B or A->B->C
+        // if C cross A and C cross B are in the same direction, then we have either C->A->B or C->B->A
+        // so we must have A->B->C (C->B->A)
+        // primer on 2D cross products:
+        // http://allenchou.net/2013/07/cross-product-of-2d-vectors/
+        function between(A, C, B) {
+            var A_C = A.x * C.y - A.y * C.x, A_B = A.x * B.y - A.y * B.x, C_A = C.x * A.y - C.y * A.x, C_B = C.x * B.y - C.y * B.x;
+            return A_C * A_B >= 0 && C_A * C_B >= 0;
+        }
+
+        var dir_vec = { x: e.gesture.deltaX, y: e.gesture.deltaY };
+
+        if (between(n_vec, ne_vec, dir_vec)) {
+            ne = true;
+        } else if (between(ne_vec, se_vec, dir_vec)) {
+            east = true;
+        } else if (between(se_vec, s_vec, dir_vec)) {
+            se = true;
+        } else if (between(s_vec, sw_vec, dir_vec)) {
+            sw = true;
+        } else if (between(sw_vec, nw_vec, dir_vec)) {
+            west = true;
+        } else {
+            nw = true;
+        }
+
+        function displace(set, direction) {
+            return set.map(function (cell) {
+                return new AxialCoords(cell.q + direction.q, cell.r + direction.r);
+            });
+        }
+
+        function checkCollision(newset, oldset) {
+            return newset.map(function (cell, i) {
+                // if cell is out of bounds, then, collision
+                // if cell is not in original set and cell is not -1 then collision
+                // if cell is not in original set and cell is -1 then no collision
+                // if cell is in original set then no collsion
+                var cellIsOutofBounds = game.grid.get(cell).type == 0 /* OUT_OF_BOUNDS */;
+                var cellInOldSet = oldset.some(function (c) {
+                    return c.q == cell.q && c.r == cell.r;
+                });
+                var isCollision = cellIsOutofBounds || (!cellInOldSet && game.grid.get(cell).type != 1 /* EMPTY */);
+                return isCollision;
+            });
+        }
+
+        function move(from, to) {
+            // cache all the from values before clearing them
+            var fromVals = from.map(function (cell) {
+                return game.grid.get(cell);
+            });
+            from.forEach(function (cell) {
+                game.grid.set(cell, new Tile(1 /* EMPTY */, -1));
+            });
+            to.forEach(function (cell, i) {
+                game.grid.set(cell, new Tile(fromVals[i].type, fromVals[i].value));
+            });
+
+            for (var i = 0; i < from.length; i++) {
+                var f = game.gridView.getSVGElement(from[i]);
+                var t = game.gridView.getSVGElement(to[i]);
+
+                game.gameState.disableMouse = true;
+
+                var anim = f.animate(100, '>', 0).move(t.transform('x'), t.transform('y'));
+
+                if (i == 0) {
+                    anim.after(function () {
+                        game.gameState.disableMouse = false;
+                        game.prune(to[0], function () {
+                            game.draw();
+                            game.extendUI();
+                            game.update();
+                        });
+                    });
+                }
+            }
+        }
+
+        game.prune(selected[0], function () {
+            game.draw();
+            game.extendUI();
+            game.update();
+        });
+
+        // some jank now that the tile won't be immediately removed
+        if (game.grid.get(selected[0]).type == 1 /* EMPTY */) {
+            return;
+        }
+
+        var delta_vec = { q: 0, r: 0 };
+        if (ne) {
+            delta_vec.q = 1;
+            delta_vec.r = -1;
+        } else if (east) {
+            delta_vec.q = 1;
+            delta_vec.r = 0;
+        } else if (se) {
+            delta_vec.q = 0;
+            delta_vec.r = 1;
+        } else if (sw) {
+            delta_vec.q = -1;
+            delta_vec.r = 1;
+        } else if (west) {
+            delta_vec.q = -1;
+            delta_vec.r = 0;
+        } else {
+            delta_vec.q = 0;
+            delta_vec.r = -1;
+        }
+
+        var oldset = selected.map(Utils.deepCopy);
+        var newset = oldset.map(Utils.deepCopy);
+        while (checkCollision(newset, oldset).every(function (col) {
+            return col == false;
+        })) {
+            oldset = newset.map(Utils.deepCopy); // oldset = newset (deep copy)
+            newset = displace(oldset, delta_vec);
+        }
+        move(selected, oldset);
+        selected = oldset; // shallow copy is fine
+
+        game.gameState.selected = selected;
+    };
+    return HexGame;
+})();
+/// <reference path="lib/chroma-js.d.ts" />
+/// <reference path="lib/hammerjs.d.ts" />
+/// <reference path="lib/svgjs.d.ts" />
+/// <reference path="lib/utils.ts" />
+/// <reference path="./game.ts" />
+var SquareGame = (function () {
+    function SquareGame(canvas) {
+        var _this = this;
+        if (canvas == null) {
+            canvas = SVG('screen').size(720, 720);
+            console.log("no canvas supplied, starting with default canvas with dims " + canvas.width() + ", " + canvas.height());
+        }
+
+        this.canvas = canvas;
+
+        var gp = {
+            level: 1,
+            gridw: 6,
+            gridh: 6,
+            maxVal: 5
+        };
+
+        this.init(gp);
+
+        Hammer(this.canvas.node, { preventDefault: true }).on("dragend swipeend", function (e) {
+            _this.onDrag(e, _this);
+        });
     }
+    SquareGame.prototype.draw = function () {
+        this.canvas.clear();
+        this.gridView.draw(this.canvas);
+    };
 
-    gridView = View.fromModel(grid);
+    SquareGame.prototype.extendUI = function () {
+        var cells = this.gridView.getSVGElements();
 
-    draw();
+        var game = this;
+        cells.forEach(function (cell, i) {
+            if (cell === null)
+                return;
+            cell.mouseover(function () {
+                if (game.gameState.disableMouse)
+                    return;
+                if (game.grid.get(cell.coords).type == 4 /* DEACTIVATED */ || game.grid.get(cell.coords).type == 1 /* EMPTY */)
+                    return;
+                var hover = game.floodAcquire(cell.coords, game.grid.get(cell.coords));
+                hover.forEach(function (t) {
+                    game.gridView.getSVGElement(t).rect.attr({ 'fill': game.gridView.colorizer.highlightFromTile(game.grid.getFlat(i)) });
+                });
+            }).mouseout(function () {
+                if (game.gameState.disableMouse)
+                    return;
+                var hover = game.floodAcquire(cell.coords, game.grid.get(cell.coords));
+                hover.forEach(function (t) {
+                    game.gridView.getSVGElement(t).rect.attr({ 'fill': game.gridView.colorizer.fromTile(game.grid.getFlat(i)) });
+                });
+            });
+            var hammer = Hammer(cell.node, { preventDefault: true });
+            hammer.on("dragstart swipestart", function (e) {
+                // 'this' refers to the DOM node directly here
+                if (game.grid.get(cell.coords).type != 4 /* DEACTIVATED */) {
+                    game.gameState.selected = game.floodAcquire(cell.coords, game.grid.get(cell.coords));
+                } else {
+                    game.gameState.selected = [];
+                }
+            });
+        });
+    };
 
-    Hammer(document.getElementById('screen'), { preventDefault: true }).on("dragend swipeend", pollDrag);
+    SquareGame.prototype.init = function (gp) {
+        var gs = {
+            activeCells: gp.maxVal * (gp.maxVal + 1) / 2 - 1,
+            disableMouse: false,
+            selected: []
+        };
+
+        this.gameParams = gp;
+        this.gameState = gs;
+
+        this.grid = new Model.Square(this.gameParams.gridw, this.gameParams.gridh, new Tile(1 /* EMPTY */, 0), new Tile(0 /* OUT_OF_BOUNDS */, -1));
+        this.procGenGrid(this.grid, gp);
+
+        this.gridView = View.fromModel(this.grid);
+        this.draw();
+        this.extendUI();
+    };
+
+    SquareGame.prototype.update = function () {
+        if (this.clearedStage()) {
+            this.advance();
+        }
+    };
+
+    // procedurally generate a playable square grid
+    // the grid must:
+    // 1) have n of tiles labeled n.
+    // 2) have enough empty spaces to be tractable (and fun)
+    SquareGame.prototype.procGenGrid = function (grid, gp) {
+        var count = [];
+
+        for (var i = 0; i < gp.gridw * gp.gridh; i++) {
+            var val = Math.round(Math.random() * (gp.maxVal - 2) + 2);
+            grid.setFlat(i, new Tile(2 /* REGULAR */, val));
+            if (count[val] == null) {
+                count[val] = 0;
+            }
+            count[val]++;
+        }
+
+        for (i = 0; i < gp.gridw * gp.gridh; i++) {
+            if (Math.random() > 0.4) {
+                if (count[grid.getFlat(i).value] > grid.getFlat(i).value) {
+                    count[grid.getFlat(i).value]--;
+                    grid.setFlat(i, new Tile(1 /* EMPTY */, -1));
+                }
+            }
+        }
+
+        for (i = 2; i <= gp.maxVal; i++) {
+            if (count[i] > i) {
+                for (var j = 0; j < gp.gridw * gp.gridh && count[i] > i; j++) {
+                    if (grid.getFlat(j).value == i) {
+                        grid.setFlat(j, new Tile(1 /* EMPTY */, -1));
+                        count[i]--;
+                    }
+                }
+            }
+        }
+
+        for (i = 2; i <= gp.maxVal; i++) {
+            if (count[i] < i) {
+                while (count[i] < i) {
+                    var randIndex = Math.round(Math.random() * (gp.gridw * gp.gridh - 1));
+                    if (grid.getFlat(randIndex).type == 1 /* EMPTY */) {
+                        grid.setFlat(randIndex, new Tile(2 /* REGULAR */, i));
+                        count[i]++;
+                    }
+                }
+            }
+        }
+
+        // count active cells
+        this.gameState.activeCells = 0;
+        for (i = 2; i <= gp.maxVal; i++) {
+            if (count[i]) {
+                this.gameState.activeCells += count[i];
+            } else {
+                console.log("bad state:" + i + " is null");
+            }
+        }
+    };
+
+    SquareGame.prototype.onDrag = function (e, game) {
+        if (game.gameState.selected == null || game.gameState.selected.length == 0) {
+            console.log("nothing selected");
+            return;
+        }
+
+        var up = false, down = false, left = false, right = false;
+
+        if (Math.abs(e.gesture.deltaY) > Math.abs(e.gesture.deltaX)) {
+            up = e.gesture.deltaY < 0;
+            down = !up;
+        } else {
+            left = e.gesture.deltaX < 0;
+            right = !left;
+        }
+
+        function displace(set, direction) {
+            return set.map(function (cell) {
+                return new CartesianCoords(cell.x + direction.x, cell.y + direction.y);
+            });
+        }
+
+        function checkCollision(newset, oldset) {
+            return newset.map(function (cell, i) {
+                // if cell is out of bounds, then, collision
+                // if cell is not in original set and cell is not -1 then collision
+                // if cell is not in original set and cell is -1 then no collision
+                // if cell is in original set then no collsion
+                var cellIsOutofBounds = game.grid.get(cell).type == 0 /* OUT_OF_BOUNDS */;
+                var cellInOldSet = oldset.some(function (c) {
+                    return c.x == cell.x && c.y == cell.y;
+                });
+                var isCollision = cellIsOutofBounds || (!cellInOldSet && game.grid.get(cell).type != 1 /* EMPTY */);
+                return isCollision;
+            });
+        }
+
+        function move(from, to) {
+            // cache all the from values before clearing them
+            var fromVals = from.map(function (cell) {
+                return game.grid.get(cell);
+            });
+            from.forEach(function (cell) {
+                game.grid.set(cell, new Tile(1 /* EMPTY */, -1));
+            });
+            to.forEach(function (cell, i) {
+                game.grid.set(cell, new Tile(fromVals[i].type, fromVals[i].value));
+            });
+
+            for (var i = 0; i < from.length; i++) {
+                var f = game.gridView.getSVGElement(from[i]);
+                var t = game.gridView.getSVGElement(to[i]);
+
+                game.gameState.disableMouse = true;
+
+                var anim = f.animate(100, '>', 0).move(t.transform('x'), t.transform('y'));
+
+                if (i == 0) {
+                    anim.after(function () {
+                        game.gameState.disableMouse = false;
+                        game.prune(to[0], function () {
+                            game.draw();
+                            game.extendUI();
+                            game.update();
+                        });
+                    });
+                }
+            }
+        }
+
+        game.prune(game.gameState.selected[0], function () {
+            game.draw();
+            game.extendUI();
+            game.update();
+        });
+
+        if (game.grid.get(game.gameState.selected[0]).type == 1 /* EMPTY */) {
+            return;
+        }
+
+        if (up) {
+            var oldset = game.gameState.selected.map(Utils.deepCopy);
+            var newset = oldset.map(Utils.deepCopy);
+            while (checkCollision(newset, oldset).every(function (col) {
+                return col == false;
+            })) {
+                oldset = newset.map(Utils.deepCopy); // oldset = newset (deep copy)
+                newset = displace(oldset, { x: 0, y: -1 });
+            }
+            move(game.gameState.selected, oldset);
+            game.gameState.selected = oldset; // shallow copy is fine
+        } else if (down) {
+            var oldset = game.gameState.selected.map(Utils.deepCopy);
+            var newset = oldset.map(Utils.deepCopy);
+            while (checkCollision(newset, oldset).every(function (col) {
+                return col == false;
+            })) {
+                oldset = newset.map(Utils.deepCopy); // oldset = newset (deep copy)
+                newset = displace(oldset, { x: 0, y: 1 });
+            }
+            move(game.gameState.selected, oldset);
+            game.gameState.selected = oldset; // shallow copy is fine
+        }
+
+        if (left) {
+            var oldset = game.gameState.selected.map(Utils.deepCopy);
+            var newset = oldset.map(Utils.deepCopy);
+            while (checkCollision(newset, oldset).every(function (col) {
+                return col == false;
+            })) {
+                oldset = newset.map(Utils.deepCopy);
+                newset = displace(oldset, { x: -1, y: 0 });
+            }
+            move(game.gameState.selected, oldset);
+            game.gameState.selected = oldset; // shallow copy is fine
+        } else if (right) {
+            var oldset = game.gameState.selected.map(Utils.deepCopy);
+            var newset = oldset.map(Utils.deepCopy);
+            while (checkCollision(newset, oldset).every(function (col) {
+                return col == false;
+            })) {
+                oldset = newset.map(Utils.deepCopy);
+                newset = displace(oldset, { x: 1, y: 0 });
+            }
+            move(game.gameState.selected, oldset);
+            game.gameState.selected = oldset; // shallow copy is fine
+        }
+    };
+
+    SquareGame.prototype.clearedStage = function () {
+        return this.gameState.activeCells == 0;
+    };
+
+    SquareGame.prototype.advance = function () {
+        var gp = Utils.deepCopy(this.gameParams);
+        gp.level++;
+
+        gp.gridw = Math.floor((gp.level + 4) * 1.2);
+        gp.gridh = Math.floor((gp.level + 4) * 1.2);
+
+        gp.maxVal = gp.level + 3;
+
+        this.init(gp);
+    };
+
+    SquareGame.prototype.floodAcquire = function (start, tile) {
+        var cluster = [];
+        var marked = { get: null, set: null };
+        var gridw = this.gameParams.gridw;
+        marked.get = function (key) {
+            return this[JSON.stringify(key)] === undefined ? false : this[JSON.stringify(key)];
+        };
+        marked.set = function (key) {
+            this[JSON.stringify(key)] = true;
+        };
+        var Q = [];
+        if (this.grid.get(new CartesianCoords(start.x, start.y)) != tile)
+            return [];
+        Q.push(start);
+        while (Q.length > 0) {
+            var n = Q.shift();
+            if (this.grid.get(n).value == tile.value && this.grid.get(n).type == tile.type && !marked.get(n)) {
+                var w = new CartesianCoords(n.x, n.y);
+                var e = new CartesianCoords(n.x, n.y);
+
+                while (this.grid.get(new CartesianCoords(w.x - 1, w.y)).value == tile.value && this.grid.get(new CartesianCoords(w.x - 1, w.y)).type == tile.type) {
+                    w.x--;
+                }
+
+                while (this.grid.get(new CartesianCoords(e.x + 1, e.y)).value == tile.value && this.grid.get(new CartesianCoords(e.x + 1, e.y)).type == tile.type) {
+                    e.x++;
+                }
+
+                for (var x = w.x; x < e.x + 1; x++) {
+                    var nn = new CartesianCoords(x, n.y);
+                    marked.set(nn);
+                    cluster.push(nn);
+                    var north = new CartesianCoords(nn.x, nn.y - 1);
+                    var south = new CartesianCoords(nn.x, nn.y + 1);
+                    if (this.grid.get(north).value == tile.value && this.grid.get(north).type == tile.type)
+                        Q.push(north);
+                    if (this.grid.get(south).value == tile.value && this.grid.get(south).type == tile.type)
+                        Q.push(south);
+                }
+            }
+        }
+        return cluster;
+    };
+
+    SquareGame.prototype.prune = function (start, postCallback) {
+        this.draw(); // sync model and view/DOM elements -- this is important, otherwise the view will be outdated and animations won't play right!!!
+
+        // see if we should delete this cell and surrounding cells
+        var targets = this.floodAcquire(start, this.grid.get(start));
+        if (targets.length == this.grid.get(start).value) {
+            if (this.grid.get(start).type == 4 /* DEACTIVATED */)
+                return;
+            var game = this;
+            targets.forEach(function (cell, i) {
+                if (game.grid.get(cell).type == 2 /* REGULAR */) {
+                    game.grid.set(cell, new Tile(1 /* EMPTY */, -1));
+                    var c = game.gridView.getSVGElement(cell);
+                    c.animate(200, '>', 0).scale(0, 0).after(function () {
+                        game.gameState.activeCells--;
+                        if (i == targets.length - 1) {
+                            postCallback();
+                        }
+                    });
+                } else if (game.grid.get(cell).type == 5 /* LAVA */) {
+                    game.grid.set(cell, new Tile(4 /* DEACTIVATED */, game.grid.get(cell).value));
+                }
+
+                console.log(game.gameState.activeCells);
+            });
+        } else {
+            postCallback();
+        }
+    };
+    return SquareGame;
+})();
+/// <reference path="./hexgame.ts" />
+/// <reference path="./squaregame.ts" />
+var game;
+
+var init = function () {
+    var canvas = SVG('screen').size(720, 720);
+    game = new HexGame(canvas);
 };

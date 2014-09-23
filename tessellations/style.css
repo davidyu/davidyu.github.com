@@ -11,7 +11,7 @@ ul { list-style-type: none }
 
 /* game */
 #screen { width:720px; height:720px; margin: 50px auto auto auto }
-text { cursor: default; font-size: 10pt; color:#fff; margin: 0 3 0 0; padding: 0 0 0 0 }
+text { cursor: default; }
 .guide text { font-size: 7pt; color:#000; margin: 0; padding: 0 }
 
 /* boilerplate */
