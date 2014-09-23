@@ -191,9 +191,17 @@ var View;
         SquareView.prototype.drawTile = function (canvas, x, y, e) {
             var cellw = Math.floor(canvas.width() / this.model.gridw), cellh = Math.floor(canvas.width() / this.model.gridh);
 
-            var cell = canvas.group().transform({ x: x * cellw, y: y * cellh });
+            var xOffset = cellw / 2;
+            var yOffset = cellh / 2;
 
-            var rect = cell.rect(cellw, cellh);
+            var cell = canvas.group().transform({ x: x * cellw + xOffset, y: y * cellh + yOffset });
+
+            var pts = [new Vec2(-cellw / 2, -cellh / 2), new Vec2(cellw / 2, -cellh / 2), new Vec2(cellw / 2, cellh / 2), new Vec2(-cellw / 2, cellh / 2)];
+            var ptstr = pts.reduce(function (p1, p2, i, v) {
+                return p1.toString() + " " + p2.toString();
+            }, "");
+
+            var rect = cell.polygon(ptstr);
 
             rect.attr({
                 'fill': this.colorizer.fromTile(e),
@@ -203,7 +211,7 @@ var View;
 
             text.attr({
                 'fill': this.colorizer.foregroundFromColor(this.colorizer.fromTile(e)),
-                'font-size': cellw / 4 }).transform({ x: cellw / 2 - text.attr('font-size') / 4, y: cellh / 2 + text.attr('font-size') / 4 });
+                'font-size': cellw / 4 }).transform({ x: -text.attr('font-size') / 4, y: text.attr('font-size') / 4 });
 
             // cache UI hooks
             cell.coords = new CartesianCoords(x, y);
