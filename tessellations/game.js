@@ -384,15 +384,83 @@ var Utils = (function () {
     };
     return Utils;
 })();
+/// <reference path="./game.ts" />
+
+var SurvivalMechanic = (function () {
+    function SurvivalMechanic(game) {
+        this.game = game; // need to mutate
+        this.params = {
+            respawns: 0,
+            maxRespawnsTillLimit: 100,
+            minRespawnInterval: 3000,
+            maxRespawnInterval: 10000
+        };
+        this.timeSinceLastRespawn = 0;
+    }
+    SurvivalMechanic.prototype.timeTillNextRespawn = function () {
+        // normalization factor
+        var a = (this.params.maxRespawnInterval - this.params.minRespawnInterval) / Math.sqrt(this.params.maxRespawnsTillLimit);
+        return a * Math.sqrt(this.params.maxRespawnsTillLimit - this.params.respawns) + this.params.minRespawnInterval;
+    };
+
+    SurvivalMechanic.prototype.update = function (dt) {
+        if (this.game.gameState.activeCells <= 0)
+            return;
+        this.timeSinceLastRespawn += dt;
+        var interval = this.timeTillNextRespawn();
+        if (this.timeSinceLastRespawn >= interval) {
+            this.timeSinceLastRespawn = 0;
+            this.spawnNewTiles();
+            this.params.respawns++;
+        }
+    };
+
+    SurvivalMechanic.prototype.spawnNewTiles = function () {
+        var _this = this;
+        var tileN = Math.round(Math.random() * this.game.gameParams.maxVal);
+        while (this.game.gameState.activeCells < tileN) {
+            tileN = Math.round(Math.random() * this.game.gameParams.maxVal);
+        }
+
+        var tilesToPlace = tileN;
+
+        var tileIndices = [];
+
+        while (tilesToPlace > 0) {
+            var randomPlace = Math.round(Math.random() * this.game.grid.size);
+            while (this.game.grid.getFlat(randomPlace).type != 1 /* EMPTY */) {
+                randomPlace = Math.round(Math.random() * this.game.grid.size);
+            }
+            this.game.grid.setFlat(randomPlace, new Tile(2 /* REGULAR */, tileN));
+
+            tilesToPlace--;
+            this.game.gameState.activeCells++;
+
+            tileIndices.push(randomPlace);
+        }
+
+        this.game.draw();
+
+        tileIndices.forEach(function (i) {
+            var c = _this.game.gridView.getSVGElements()[i];
+            c.scale(0, 0);
+            c.animate(200, '>', 0).scale(1, 1).after(function () {
+                _this.game.extendUI();
+            });
+        });
+    };
+    return SurvivalMechanic;
+})();
 /// <reference path="lib/chroma-js.d.ts" />
 /// <reference path="lib/hammerjs.d.ts" />
 /// <reference path="lib/svgjs.d.ts" />
 /// <reference path="lib/utils.ts" />
 /// <reference path="./game.ts" />
+/// <reference path="./survivalmechanic.ts" />
 var HexGame = (function () {
     function HexGame(gameType, canvas) {
         var _this = this;
-        this.timeSinceLastUpdate = new Date().getUTCMilliseconds();
+        this.timeSinceLastUpdate = new Date().getTime();
         if (canvas == null) {
             canvas = SVG('screen').size(720, 720);
             console.log("no canvas supplied, starting with default canvas with dims " + canvas.width() + ", " + canvas.height());
@@ -408,13 +476,22 @@ var HexGame = (function () {
             gameType: gameType
         };
 
+        if (gp.gameType == 0 /* SURVIVAL */) {
+            gp.gridw = 10;
+            gp.gridh = 10;
+            gp.maxVal = 9;
+            this.survivalMechanic = new SurvivalMechanic(this);
+        }
+
         this.init(gp);
 
         Hammer(this.canvas.node, { preventDefault: true }).on("dragend swipeend", function (e) {
             _this.onDrag(e, _this);
         });
 
-        setInterval(this.update, 1000 / 60);
+        setInterval(function () {
+            return _this.update(_this);
+        }, 1000 / 5);
     }
     HexGame.prototype.draw = function () {
         this.canvas.clear();
@@ -458,11 +535,24 @@ var HexGame = (function () {
         });
     };
 
-    HexGame.prototype.update = function () {
-        var now = new Date().getUTCMilliseconds();
-        var dt = now = this.timeSinceLastUpdate;
-        if (this.clearedStage()) {
-            this.advance();
+    HexGame.prototype.update = function (game) {
+        if (game == null)
+            game = this;
+
+        var now = new Date().getTime();
+        var dt = now - this.timeSinceLastUpdate;
+        game.timeSinceLastUpdate = now;
+
+        if (game.clearedStage()) {
+            if (game.gameParams.gameType == 0 /* SURVIVAL */) {
+                alert("Holy crap you beat survival mode! How is that even possible");
+            } else {
+                game.advance();
+            }
+        }
+
+        if (game.gameParams.gameType == 0 /* SURVIVAL */) {
+            game.survivalMechanic.update(dt);
         }
     };
 
@@ -718,13 +808,16 @@ var HexGame = (function () {
             }
         }
 
+        if (game.grid.get(selected[0]).type == 1 /* EMPTY */) {
+            return;
+        }
+
         game.prune(selected[0], function () {
             game.draw();
             game.extendUI();
             game.update();
         });
 
-        // some jank now that the tile won't be immediately removed
         if (game.grid.get(selected[0]).type == 1 /* EMPTY */) {
             return;
         }
@@ -764,74 +857,6 @@ var HexGame = (function () {
         game.gameState.selected = selected;
     };
     return HexGame;
-})();
-/// <reference path="./game.ts" />
-
-var SurvivalMechanic = (function () {
-    function SurvivalMechanic(game) {
-        this.game = game; // need to mutate
-        this.params = {
-            respawns: 0,
-            maxRespawnsTillLimit: 100,
-            minRespawnInterval: 3000,
-            maxRespawnInterval: 15000
-        };
-        this.timeSinceLastRespawn = 0;
-    }
-    SurvivalMechanic.prototype.timeTillNextRespawn = function () {
-        // normalization factor
-        return 5000;
-        var a = (this.params.maxRespawnInterval - this.params.minRespawnInterval) / Math.sqrt(this.params.maxRespawnsTillLimit);
-        return a * Math.sqrt(this.params.maxRespawnsTillLimit - this.params.respawns) + this.params.minRespawnInterval;
-    };
-
-    SurvivalMechanic.prototype.update = function (dt) {
-        if (this.game.gameState.activeCells <= 0)
-            return;
-        this.timeSinceLastRespawn += dt;
-        var interval = this.timeTillNextRespawn();
-        if (this.timeSinceLastRespawn >= interval) {
-            this.timeSinceLastRespawn = 0;
-            this.spawnNewTiles();
-            this.params.respawns++;
-        }
-    };
-
-    SurvivalMechanic.prototype.spawnNewTiles = function () {
-        var _this = this;
-        var tileN = Math.round(Math.random() * this.game.gameParams.maxVal);
-        while (this.game.gameState.activeCells < tileN) {
-            tileN = Math.round(Math.random() * this.game.gameParams.maxVal);
-        }
-
-        var tilesToPlace = tileN;
-
-        var tileIndices = [];
-
-        while (tilesToPlace > 0) {
-            var randomPlace = Math.round(Math.random() * this.game.grid.size);
-            while (this.game.grid.getFlat(randomPlace).type != 1 /* EMPTY */) {
-                randomPlace = Math.round(Math.random() * this.game.grid.size);
-            }
-            this.game.grid.setFlat(randomPlace, new Tile(2 /* REGULAR */, tileN));
-
-            tilesToPlace--;
-            this.game.gameState.activeCells++;
-
-            tileIndices.push(randomPlace);
-        }
-
-        this.game.draw();
-
-        tileIndices.forEach(function (i) {
-            var c = _this.game.gridView.getSVGElements()[i];
-            c.scale(0, 0);
-            c.animate(200, '>', 0).scale(1, 1).after(function () {
-                game.extendUI();
-            });
-        });
-    };
-    return SurvivalMechanic;
 })();
 /// <reference path="lib/chroma-js.d.ts" />
 /// <reference path="lib/hammerjs.d.ts" />
@@ -873,7 +898,7 @@ var SquareGame = (function () {
 
         setInterval(function () {
             return _this.update(_this);
-        }, 1000.0 / 60.0);
+        }, 1000 / 5);
     }
     SquareGame.prototype.draw = function () {
         this.canvas.clear();
@@ -944,6 +969,7 @@ var SquareGame = (function () {
 
         if (game.clearedStage()) {
             if (game.gameParams.gameType == 0 /* SURVIVAL */) {
+                alert("Holy crap you beat survival mode! How is that even possible");
             } else {
                 game.advance();
             }
@@ -1070,6 +1096,10 @@ var SquareGame = (function () {
                     });
                 }
             }
+        }
+
+        if (game.grid.get(game.gameState.selected[0]).type == 1 /* EMPTY */) {
+            return;
         }
 
         game.prune(game.gameState.selected[0], function () {
@@ -1231,7 +1261,11 @@ var SquareGame = (function () {
 var game;
 
 var init = function () {
-    var survival = Utils.getURLParameter("survival") == "true";
+    var doSurvival = Utils.getURLParameter("survival") == "true";
+    var useHexGrid = Utils.getURLParameter("hex") == "true";
+
     var canvas = SVG('screen').size(720, 720);
-    game = new SquareGame(survival ? 0 /* SURVIVAL */ : 1 /* PUZZLE */, canvas);
+    var gameMode = doSurvival ? 0 /* SURVIVAL */ : 1 /* PUZZLE */;
+
+    game = useHexGrid ? new HexGame(gameMode, canvas) : new SquareGame(gameMode, canvas);
 };
