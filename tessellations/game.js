@@ -83,6 +83,7 @@ var Model;
         function Hex(gridr, DefaultTile, OutOfBoundsTile) {
             this.grid = [];
             this.gridr = gridr;
+            this.size = this.diameter() * this.diameter();
             this.outOfBoundsTile = OutOfBoundsTile;
             for (var r = -this.gridr; r <= this.gridr; r++) {
                 for (var q = -this.gridr; q <= this.gridr; q++) {
@@ -359,6 +360,12 @@ var View;
 /// <reference path="./model.ts" />
 /// <reference path="./view.ts" />
 var MIN_VAL = 2;
+
+var GameType;
+(function (GameType) {
+    GameType[GameType["SURVIVAL"] = 0] = "SURVIVAL";
+    GameType[GameType["PUZZLE"] = 1] = "PUZZLE";
+})(GameType || (GameType = {}));
 var Utils = (function () {
     function Utils() {
     }
@@ -370,6 +377,11 @@ var Utils = (function () {
         });
         return dst;
     };
+
+    // http://stackoverflow.com/a/11582513
+    Utils.getURLParameter = function (key) {
+        return decodeURIComponent((new RegExp('[?|&]' + key + '=' + '([^&;]+?)(&|#|;|$)').exec(location.search) || [, ""])[1].replace(/\+/g, '%20')) || null;
+    };
     return Utils;
 })();
 /// <reference path="lib/chroma-js.d.ts" />
@@ -378,8 +390,9 @@ var Utils = (function () {
 /// <reference path="lib/utils.ts" />
 /// <reference path="./game.ts" />
 var HexGame = (function () {
-    function HexGame(canvas) {
+    function HexGame(gameType, canvas) {
         var _this = this;
+        this.timeSinceLastUpdate = new Date().getUTCMilliseconds();
         if (canvas == null) {
             canvas = SVG('screen').size(720, 720);
             console.log("no canvas supplied, starting with default canvas with dims " + canvas.width() + ", " + canvas.height());
@@ -391,7 +404,8 @@ var HexGame = (function () {
             level: 1,
             gridw: 6,
             gridh: 6,
-            maxVal: 5
+            maxVal: 5,
+            gameType: gameType
         };
 
         this.init(gp);
@@ -399,6 +413,8 @@ var HexGame = (function () {
         Hammer(this.canvas.node, { preventDefault: true }).on("dragend swipeend", function (e) {
             _this.onDrag(e, _this);
         });
+
+        setInterval(this.update, 1000 / 60);
     }
     HexGame.prototype.draw = function () {
         this.canvas.clear();
@@ -443,6 +459,8 @@ var HexGame = (function () {
     };
 
     HexGame.prototype.update = function () {
+        var now = new Date().getUTCMilliseconds();
+        var dt = now = this.timeSinceLastUpdate;
         if (this.clearedStage()) {
             this.advance();
         }
@@ -496,19 +514,8 @@ var HexGame = (function () {
         }
 
         for (i = MIN_VAL; i <= gp.maxVal; i++) {
-            if (count[i] > i) {
-                for (var j = 0; j < grid.getTileArray().length && count[i] > i; j++) {
-                    if (grid.getFlat(j).value == i) {
-                        grid.setFlat(j, new Tile(1 /* EMPTY */, -1));
-                        count[i]--;
-                    }
-                }
-            }
-        }
-
-        for (i = MIN_VAL; i <= gp.maxVal; i++) {
-            if (count[i] < i) {
-                while (count[i] < i) {
+            if (count[i] < i || count[i] % i != 0) {
+                while (count[i] < i || count[i] % i != 0) {
                     var randIndex = Math.round(Math.random() * (grid.getTileArray().length - 1));
                     if (grid.getFlat(randIndex).type == 1 /* EMPTY */) {
                         grid.setFlat(randIndex, new Tile(2 /* REGULAR */, i));
@@ -576,18 +583,21 @@ var HexGame = (function () {
         this.draw(); // sync model and view/DOM elements -- this is important, otherwise the view will be outdated and animations won't play right!!!
         var startTile = this.grid.get(start);
         var group = this.floodAcquire(start, startTile);
-        if (group.length == startTile.value) {
+        if (group.length >= startTile.value) {
             if (startTile.type == 4 /* DEACTIVATED */)
                 return;
             var game = this;
             group.forEach(function (cell, i) {
+                if (i >= startTile.value)
+                    return;
+
                 // each Tile should have its own "prune" behavior
                 if (game.grid.get(cell).type == 2 /* REGULAR */) {
                     game.grid.set(cell, new Tile(1 /* EMPTY */, -1));
                     var c = game.gridView.getSVGElement(cell);
                     c.animate(200, '>', 0).scale(0, 0).after(function () {
                         game.gameState.activeCells--;
-                        if (i == group.length - 1) {
+                        if (i == startTile.value - 1) {
                             postCallback();
                         }
                     });
@@ -755,14 +765,84 @@ var HexGame = (function () {
     };
     return HexGame;
 })();
+/// <reference path="./game.ts" />
+
+var SurvivalMechanic = (function () {
+    function SurvivalMechanic(game) {
+        this.game = game; // need to mutate
+        this.params = {
+            respawns: 0,
+            maxRespawnsTillLimit: 100,
+            minRespawnInterval: 3000,
+            maxRespawnInterval: 15000
+        };
+        this.timeSinceLastRespawn = 0;
+    }
+    SurvivalMechanic.prototype.timeTillNextRespawn = function () {
+        // normalization factor
+        return 5000;
+        var a = (this.params.maxRespawnInterval - this.params.minRespawnInterval) / Math.sqrt(this.params.maxRespawnsTillLimit);
+        return a * Math.sqrt(this.params.maxRespawnsTillLimit - this.params.respawns) + this.params.minRespawnInterval;
+    };
+
+    SurvivalMechanic.prototype.update = function (dt) {
+        if (this.game.gameState.activeCells <= 0)
+            return;
+        this.timeSinceLastRespawn += dt;
+        var interval = this.timeTillNextRespawn();
+        if (this.timeSinceLastRespawn >= interval) {
+            this.timeSinceLastRespawn = 0;
+            this.spawnNewTiles();
+            this.params.respawns++;
+        }
+    };
+
+    SurvivalMechanic.prototype.spawnNewTiles = function () {
+        var _this = this;
+        var tileN = Math.round(Math.random() * this.game.gameParams.maxVal);
+        while (this.game.gameState.activeCells < tileN) {
+            tileN = Math.round(Math.random() * this.game.gameParams.maxVal);
+        }
+
+        var tilesToPlace = tileN;
+
+        var tileIndices = [];
+
+        while (tilesToPlace > 0) {
+            var randomPlace = Math.round(Math.random() * this.game.grid.size);
+            while (this.game.grid.getFlat(randomPlace).type != 1 /* EMPTY */) {
+                randomPlace = Math.round(Math.random() * this.game.grid.size);
+            }
+            this.game.grid.setFlat(randomPlace, new Tile(2 /* REGULAR */, tileN));
+
+            tilesToPlace--;
+            this.game.gameState.activeCells++;
+
+            tileIndices.push(randomPlace);
+        }
+
+        this.game.draw();
+
+        tileIndices.forEach(function (i) {
+            var c = _this.game.gridView.getSVGElements()[i];
+            c.scale(0, 0);
+            c.animate(200, '>', 0).scale(1, 1).after(function () {
+                game.extendUI();
+            });
+        });
+    };
+    return SurvivalMechanic;
+})();
 /// <reference path="lib/chroma-js.d.ts" />
 /// <reference path="lib/hammerjs.d.ts" />
 /// <reference path="lib/svgjs.d.ts" />
 /// <reference path="lib/utils.ts" />
 /// <reference path="./game.ts" />
+/// <reference path="./survivalmechanic.ts" />
 var SquareGame = (function () {
-    function SquareGame(canvas) {
+    function SquareGame(gameType, canvas) {
         var _this = this;
+        this.timeSinceLastUpdate = new Date().getTime();
         if (canvas == null) {
             canvas = SVG('screen').size(720, 720);
             console.log("no canvas supplied, starting with default canvas with dims " + canvas.width() + ", " + canvas.height());
@@ -774,14 +854,26 @@ var SquareGame = (function () {
             level: 1,
             gridw: 6,
             gridh: 6,
-            maxVal: 5
+            maxVal: 5,
+            gameType: gameType
         };
+
+        if (gp.gameType == 0 /* SURVIVAL */) {
+            gp.gridw = 10;
+            gp.gridh = 10;
+            gp.maxVal = 9;
+            this.survivalMechanic = new SurvivalMechanic(this);
+        }
 
         this.init(gp);
 
         Hammer(this.canvas.node, { preventDefault: true }).on("dragend swipeend", function (e) {
             _this.onDrag(e, _this);
         });
+
+        setInterval(function () {
+            return _this.update(_this);
+        }, 1000.0 / 60.0);
     }
     SquareGame.prototype.draw = function () {
         this.canvas.clear();
@@ -842,9 +934,23 @@ var SquareGame = (function () {
         this.extendUI();
     };
 
-    SquareGame.prototype.update = function () {
-        if (this.clearedStage()) {
-            this.advance();
+    SquareGame.prototype.update = function (game) {
+        if (game == null)
+            game = this;
+
+        var now = new Date().getTime();
+        var dt = now - game.timeSinceLastUpdate;
+        game.timeSinceLastUpdate = now;
+
+        if (game.clearedStage()) {
+            if (game.gameParams.gameType == 0 /* SURVIVAL */) {
+            } else {
+                game.advance();
+            }
+        }
+
+        if (game.gameParams.gameType == 0 /* SURVIVAL */) {
+            game.survivalMechanic.update(dt);
         }
     };
 
@@ -874,19 +980,8 @@ var SquareGame = (function () {
         }
 
         for (i = 2; i <= gp.maxVal; i++) {
-            if (count[i] > i) {
-                for (var j = 0; j < gp.gridw * gp.gridh && count[i] > i; j++) {
-                    if (grid.getFlat(j).value == i) {
-                        grid.setFlat(j, new Tile(1 /* EMPTY */, -1));
-                        count[i]--;
-                    }
-                }
-            }
-        }
-
-        for (i = 2; i <= gp.maxVal; i++) {
-            if (count[i] < i) {
-                while (count[i] < i) {
+            if (count[i] < i || count[i] % i != 0) {
+                while (count[i] < i || count[i] % i != 0) {
                     var randIndex = Math.round(Math.random() * (gp.gridw * gp.gridh - 1));
                     if (grid.getFlat(randIndex).type == 1 /* EMPTY */) {
                         grid.setFlat(randIndex, new Tile(2 /* REGULAR */, i));
@@ -1100,18 +1195,21 @@ var SquareGame = (function () {
         this.draw(); // sync model and view/DOM elements -- this is important, otherwise the view will be outdated and animations won't play right!!!
 
         // see if we should delete this cell and surrounding cells
-        var targets = this.floodAcquire(start, this.grid.get(start));
-        if (targets.length == this.grid.get(start).value) {
-            if (this.grid.get(start).type == 4 /* DEACTIVATED */)
+        var startTile = this.grid.get(start);
+        var targets = this.floodAcquire(start, startTile);
+        if (targets.length >= startTile.value) {
+            if (startTile.type == 4 /* DEACTIVATED */)
                 return;
             var game = this;
             targets.forEach(function (cell, i) {
+                if (i >= startTile.value)
+                    return;
                 if (game.grid.get(cell).type == 2 /* REGULAR */) {
                     game.grid.set(cell, new Tile(1 /* EMPTY */, -1));
                     var c = game.gridView.getSVGElement(cell);
                     c.animate(200, '>', 0).scale(0, 0).after(function () {
                         game.gameState.activeCells--;
-                        if (i == targets.length - 1) {
+                        if (i == startTile.value - 1) {
                             postCallback();
                         }
                     });
@@ -1129,9 +1227,11 @@ var SquareGame = (function () {
 })();
 /// <reference path="./hexgame.ts" />
 /// <reference path="./squaregame.ts" />
+/// <reference path="lib/utils.ts" />
 var game;
 
 var init = function () {
+    var survival = Utils.getURLParameter("survival") == "true";
     var canvas = SVG('screen').size(720, 720);
-    game = new SquareGame(canvas);
+    game = new SquareGame(survival ? 0 /* SURVIVAL */ : 1 /* PUZZLE */, canvas);
 };
