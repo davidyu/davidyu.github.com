@@ -864,6 +864,14 @@ var HexGame = (function () {
 /// <reference path="lib/utils.ts" />
 /// <reference path="./game.ts" />
 /// <reference path="./survivalmechanic.ts" />
+var CardinalDirection;
+(function (CardinalDirection) {
+    CardinalDirection[CardinalDirection["NORTH"] = 0] = "NORTH";
+    CardinalDirection[CardinalDirection["EAST"] = 1] = "EAST";
+    CardinalDirection[CardinalDirection["SOUTH"] = 2] = "SOUTH";
+    CardinalDirection[CardinalDirection["WEST"] = 3] = "WEST";
+})(CardinalDirection || (CardinalDirection = {}));
+
 var SquareGame = (function () {
     function SquareGame(gameType, canvas) {
         var _this = this;
@@ -1028,22 +1036,7 @@ var SquareGame = (function () {
         }
     };
 
-    SquareGame.prototype.onDrag = function (e, game) {
-        if (game.gameState.selected == null || game.gameState.selected.length == 0) {
-            console.log("nothing selected");
-            return;
-        }
-
-        var up = false, down = false, left = false, right = false;
-
-        if (Math.abs(e.gesture.deltaY) > Math.abs(e.gesture.deltaX)) {
-            up = e.gesture.deltaY < 0;
-            down = !up;
-        } else {
-            left = e.gesture.deltaX < 0;
-            right = !left;
-        }
-
+    SquareGame.prototype.justMove = function (tileToMove, direction, game) {
         function displace(set, direction) {
             return set.map(function (cell) {
                 return new CartesianCoords(cell.x + direction.x, cell.y + direction.y);
@@ -1065,7 +1058,7 @@ var SquareGame = (function () {
             });
         }
 
-        function move(from, to) {
+        function move(from, to, postCallback) {
             // cache all the from values before clearing them
             var fromVals = from.map(function (cell) {
                 return game.grid.get(cell);
@@ -1092,6 +1085,148 @@ var SquareGame = (function () {
                             game.draw();
                             game.extendUI();
                             game.update();
+                            postCallback();
+                        });
+                    });
+                }
+            }
+        }
+
+        if (game.grid.get(tileToMove).type == 1 /* EMPTY */) {
+            return;
+        }
+
+        game.prune(tileToMove, function () {
+            game.draw();
+            game.extendUI();
+            game.update();
+        });
+
+        if (game.grid.get(tileToMove).type == 1 /* EMPTY */) {
+            return;
+        }
+
+        var groupToMove = game.floodAcquire(tileToMove, game.grid.get(tileToMove));
+
+        var delta_vec = { x: 0, y: 0 };
+
+        switch (direction) {
+            case 0 /* NORTH */:
+                delta_vec = { x: 0, y: -1 };
+                break;
+            case 2 /* SOUTH */:
+                delta_vec = { x: 0, y: 1 };
+                break;
+            case 3 /* WEST */:
+                delta_vec = { x: -1, y: 0 };
+                break;
+            case 1 /* EAST */:
+                delta_vec = { x: 1, y: 0 };
+                break;
+        }
+
+        var oldset = groupToMove;
+        var newset = oldset.map(Utils.deepCopy);
+        var magnitude = 0;
+        while (checkCollision(newset, oldset).every(function (col) {
+            return col == false;
+        })) {
+            oldset = newset.map(Utils.deepCopy); // oldset = newset (deep copy)
+            newset = displace(oldset, delta_vec);
+            magnitude++;
+        }
+
+        var marked = { get: null, set: null };
+        marked.get = function (key) {
+            return this[JSON.stringify(key)] === undefined ? false : this[JSON.stringify(key)];
+        };
+        marked.set = function (key) {
+            this[JSON.stringify(key)] = true;
+        };
+
+        var thresholdValue = game.grid.get(tileToMove).value;
+        move(groupToMove, oldset, function () {
+            if (magnitude <= 1)
+                return;
+
+            // for each check collision between newset and oldset, if true then
+            // move that square to the new direction if it's smaller than selected[0]'s number
+            checkCollision(newset, oldset).forEach(function (col, i) {
+                if (col && game.grid.get(newset[i]).type != 0 /* OUT_OF_BOUNDS */) {
+                    if (game.grid.get(newset[i]).value < thresholdValue && !marked.get(newset[i])) {
+                        game.floodAcquire(newset[i]).forEach(function (c) {
+                            marked.set(c);
+                        });
+                        game.justMove(newset[i], direction, game);
+                    }
+                }
+            });
+        });
+    };
+
+    SquareGame.prototype.onDrag = function (e, game) {
+        if (game.gameState.selected == null || game.gameState.selected.length == 0) {
+            console.log("nothing selected");
+            return;
+        }
+
+        var moveDirection;
+
+        if (Math.abs(e.gesture.deltaY) > Math.abs(e.gesture.deltaX)) {
+            moveDirection = e.gesture.deltaY < 0 ? 0 /* NORTH */ : 2 /* SOUTH */;
+        } else {
+            moveDirection = e.gesture.deltaX < 0 ? 3 /* WEST */ : 1 /* EAST */;
+        }
+
+        function displace(set, direction) {
+            return set.map(function (cell) {
+                return new CartesianCoords(cell.x + direction.x, cell.y + direction.y);
+            });
+        }
+
+        function checkCollision(newset, oldset) {
+            return newset.map(function (cell, i) {
+                // if cell is out of bounds, then, collision
+                // if cell is not in original set and cell is not -1 then collision
+                // if cell is not in original set and cell is -1 then no collision
+                // if cell is in original set then no collsion
+                var cellIsOutofBounds = game.grid.get(cell).type == 0 /* OUT_OF_BOUNDS */;
+                var cellInOldSet = oldset.some(function (c) {
+                    return c.x == cell.x && c.y == cell.y;
+                });
+                var isCollision = cellIsOutofBounds || (!cellInOldSet && game.grid.get(cell).type != 1 /* EMPTY */);
+                return isCollision;
+            });
+        }
+
+        function move(from, to, postCallback) {
+            // cache all the from values before clearing them
+            var fromVals = from.map(function (cell) {
+                return game.grid.get(cell);
+            });
+            from.forEach(function (cell) {
+                game.grid.set(cell, new Tile(1 /* EMPTY */, -1));
+            });
+            to.forEach(function (cell, i) {
+                game.grid.set(cell, new Tile(fromVals[i].type, fromVals[i].value));
+            });
+
+            for (var i = 0; i < from.length; i++) {
+                var f = game.gridView.getSVGElement(from[i]);
+                var t = game.gridView.getSVGElement(to[i]);
+
+                game.gameState.disableMouse = true;
+
+                var anim = f.animate(100, '>', 0).move(t.transform('x'), t.transform('y'));
+
+                if (i == 0) {
+                    anim.after(function () {
+                        game.gameState.disableMouse = false;
+                        game.prune(to[0], function () {
+                            game.draw();
+                            game.extendUI();
+                            game.update();
+                            postCallback();
                         });
                     });
                 }
@@ -1112,53 +1247,62 @@ var SquareGame = (function () {
             return;
         }
 
-        if (up) {
-            var oldset = game.gameState.selected.map(Utils.deepCopy);
-            var newset = oldset.map(Utils.deepCopy);
-            while (checkCollision(newset, oldset).every(function (col) {
-                return col == false;
-            })) {
-                oldset = newset.map(Utils.deepCopy); // oldset = newset (deep copy)
-                newset = displace(oldset, { x: 0, y: -1 });
-            }
-            move(game.gameState.selected, oldset);
-            game.gameState.selected = oldset; // shallow copy is fine
-        } else if (down) {
-            var oldset = game.gameState.selected.map(Utils.deepCopy);
-            var newset = oldset.map(Utils.deepCopy);
-            while (checkCollision(newset, oldset).every(function (col) {
-                return col == false;
-            })) {
-                oldset = newset.map(Utils.deepCopy); // oldset = newset (deep copy)
-                newset = displace(oldset, { x: 0, y: 1 });
-            }
-            move(game.gameState.selected, oldset);
-            game.gameState.selected = oldset; // shallow copy is fine
+        var delta_vec = { x: 0, y: -1 };
+        switch (moveDirection) {
+            case 0 /* NORTH */:
+                delta_vec = { x: 0, y: -1 };
+                break;
+            case 1 /* EAST */:
+                delta_vec = { x: 1, y: 0 };
+                break;
+            case 2 /* SOUTH */:
+                delta_vec = { x: 0, y: 1 };
+                break;
+            case 3 /* WEST */:
+                delta_vec = { x: -1, y: 0 };
+                break;
         }
 
-        if (left) {
-            var oldset = game.gameState.selected.map(Utils.deepCopy);
-            var newset = oldset.map(Utils.deepCopy);
-            while (checkCollision(newset, oldset).every(function (col) {
-                return col == false;
-            })) {
-                oldset = newset.map(Utils.deepCopy);
-                newset = displace(oldset, { x: -1, y: 0 });
-            }
-            move(game.gameState.selected, oldset);
-            game.gameState.selected = oldset; // shallow copy is fine
-        } else if (right) {
-            var oldset = game.gameState.selected.map(Utils.deepCopy);
-            var newset = oldset.map(Utils.deepCopy);
-            while (checkCollision(newset, oldset).every(function (col) {
-                return col == false;
-            })) {
-                oldset = newset.map(Utils.deepCopy);
-                newset = displace(oldset, { x: 1, y: 0 });
-            }
-            move(game.gameState.selected, oldset);
-            game.gameState.selected = oldset; // shallow copy is fine
+        var marked = { get: null, set: null };
+        marked.get = function (key) {
+            return this[JSON.stringify(key)] === undefined ? false : this[JSON.stringify(key)];
+        };
+        marked.set = function (key) {
+            this[JSON.stringify(key)] = true;
+        };
+
+        var oldset = game.gameState.selected.map(Utils.deepCopy);
+        var newset = oldset.map(Utils.deepCopy);
+        var magnitude = 0;
+        while (checkCollision(newset, oldset).every(function (col) {
+            return col == false;
+        })) {
+            oldset = newset.map(Utils.deepCopy); // oldset = newset (deep copy)
+            newset = displace(oldset, delta_vec);
+            magnitude++;
         }
+
+        var thresholdValue = game.grid.get(game.gameState.selected[0]).value;
+
+        move(game.gameState.selected, oldset, function () {
+            if (magnitude <= 1)
+                return;
+
+            // for each check collision between newset and oldset, if true then
+            // move that square to the new direction if it's smaller than selected[0]'s number
+            checkCollision(newset, oldset).forEach(function (col, i) {
+                if (col && game.grid.get(newset[i]).type != 0 /* OUT_OF_BOUNDS */) {
+                    if (game.grid.get(newset[i]).value < thresholdValue && !marked.get(newset[i])) {
+                        game.floodAcquire(newset[i]).forEach(function (c) {
+                            marked.set(c);
+                        });
+                        game.justMove(newset[i], moveDirection, game);
+                    }
+                }
+            });
+        });
+
+        game.gameState.selected = oldset; // shallow copy is fine
     };
 
     SquareGame.prototype.clearedStage = function () {
@@ -1180,7 +1324,6 @@ var SquareGame = (function () {
     SquareGame.prototype.floodAcquire = function (start, tile) {
         var cluster = [];
         var marked = { get: null, set: null };
-        var gridw = this.gameParams.gridw;
         marked.get = function (key) {
             return this[JSON.stringify(key)] === undefined ? false : this[JSON.stringify(key)];
         };
