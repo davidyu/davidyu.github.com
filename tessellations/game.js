@@ -218,6 +218,7 @@ var View;
             cell.coords = new CartesianCoords(x, y);
             cell.rect = rect;
             cell.text = text;
+            cell.cannonicalTransform = { x: cell.transform('x'), y: cell.transform('y') };
 
             return cell;
         };
@@ -404,7 +405,7 @@ var SurvivalMechanic = (function () {
     };
 
     SurvivalMechanic.prototype.update = function (dt) {
-        if (this.game.gameState.activeCells <= 0)
+        if (this.game.gameState.activeCells >= this.game.grid.size - 1)
             return;
         this.timeSinceLastRespawn += dt;
         var interval = this.timeTillNextRespawn();
@@ -417,9 +418,9 @@ var SurvivalMechanic = (function () {
 
     SurvivalMechanic.prototype.spawnNewTiles = function () {
         var _this = this;
-        var tileN = Math.round(Math.random() * this.game.gameParams.maxVal);
-        while (this.game.gameState.activeCells < tileN) {
-            tileN = Math.round(Math.random() * this.game.gameParams.maxVal);
+        var tileN = Math.round(Math.random() * (this.game.gameParams.maxVal - MIN_VAL) + MIN_VAL);
+        while (this.game.grid.size - this.game.gameState.activeCells < tileN) {
+            tileN = Math.round(Math.random() * (this.game.gameParams.maxVal - MIN_VAL) + MIN_VAL);
         }
 
         var tilesToPlace = tileN;
@@ -427,19 +428,39 @@ var SurvivalMechanic = (function () {
         var tileIndices = [];
 
         while (tilesToPlace > 0) {
-            var randomPlace = Math.round(Math.random() * this.game.grid.size);
-            while (this.game.grid.getFlat(randomPlace).type != 1 /* EMPTY */) {
-                randomPlace = Math.round(Math.random() * this.game.grid.size);
+            var insertedPosition;
+            if (this.game.grid.size - this.game.gameState.activeCells < 10) {
+                var spacesLeft = this.game.grid.size - this.game.gameState.activeCells;
+                for (var i = 0; i < this.game.grid.size; i++) {
+                    if (this.game.grid.getFlat(i).type == 1 /* EMPTY */) {
+                        spacesLeft--;
+                        if (spacesLeft == 0) {
+                            this.game.grid.setFlat(i, new Tile(2 /* REGULAR */, tileN));
+                            insertedPosition = i;
+                        } else if (Math.random() > 0.5) {
+                            this.game.grid.setFlat(i, new Tile(2 /* REGULAR */, tileN));
+                            insertedPosition = i;
+                            break;
+                        }
+                    }
+                }
+            } else {
+                var randomPlace = Math.round(Math.random() * this.game.grid.size);
+                while (this.game.grid.getFlat(randomPlace).type != 1 /* EMPTY */) {
+                    randomPlace = Math.round(Math.random() * this.game.grid.size);
+                }
+                this.game.grid.setFlat(randomPlace, new Tile(2 /* REGULAR */, tileN));
+                insertedPosition = randomPlace;
             }
-            this.game.grid.setFlat(randomPlace, new Tile(2 /* REGULAR */, tileN));
 
             tilesToPlace--;
             this.game.gameState.activeCells++;
 
-            tileIndices.push(randomPlace);
+            tileIndices.push(insertedPosition);
         }
 
         this.game.draw();
+        this.game.extendUI();
 
         tileIndices.forEach(function (i) {
             var c = _this.game.gridView.getSVGElements()[i];
@@ -895,7 +916,6 @@ var SquareGame = (function () {
             gp.gridw = 10;
             gp.gridh = 10;
             gp.maxVal = 9;
-            this.survivalMechanic = new SurvivalMechanic(this);
         }
 
         this.init(gp);
@@ -903,10 +923,6 @@ var SquareGame = (function () {
         Hammer(this.canvas.node, { preventDefault: true }).on("dragend swipeend", function (e) {
             _this.onDrag(e, _this);
         });
-
-        setInterval(function () {
-            return _this.update(_this);
-        }, 1000 / 5);
     }
     SquareGame.prototype.draw = function () {
         this.canvas.clear();
@@ -937,19 +953,62 @@ var SquareGame = (function () {
                     game.gridView.getSVGElement(t).rect.attr({ 'fill': game.gridView.colorizer.fromTile(game.grid.getFlat(i)) });
                 });
             });
+            function displace(set, direction) {
+                return set.map(function (cell) {
+                    return new CartesianCoords(cell.x + direction.x, cell.y + direction.y);
+                });
+            }
+            function checkCollision(newset, oldset) {
+                return newset.map(function (cell, i) {
+                    // if cell is out of bounds, then, collision
+                    // if cell is not in original set and cell is not -1 then collision
+                    // if cell is not in original set and cell is -1 then no collision
+                    // if cell is in original set then no collsion
+                    var cellIsOutofBounds = game.grid.get(cell).type == 0 /* OUT_OF_BOUNDS */;
+                    var cellInOldSet = oldset.some(function (c) {
+                        return c.x == cell.x && c.y == cell.y;
+                    });
+                    var isCollision = cellIsOutofBounds || (!cellInOldSet && game.grid.get(cell).type != 1 /* EMPTY */);
+                    return isCollision;
+                });
+            }
             var hammer = Hammer(cell.node, { preventDefault: true });
-            hammer.on("dragstart swipestart", function (e) {
+            hammer.on("drag swipe", function (e) {
                 // 'this' refers to the DOM node directly here
                 if (game.grid.get(cell.coords).type != 4 /* DEACTIVATED */) {
                     game.gameState.selected = game.floodAcquire(cell.coords, game.grid.get(cell.coords));
                 } else {
                     game.gameState.selected = [];
                 }
+
+                // show where we're moving
+                var cellw = Math.floor(game.canvas.width() / game.gameParams.gridw), cellh = Math.floor(game.canvas.width() / game.gameParams.gridh);
+                var dragOffsetX = cellw / 4;
+                var dragOffsetY = cellh / 4;
+                var dragOffset = { x: 0, y: 0 };
+                var moveVector = { x: 0, y: 0 };
+                if (Math.abs(e.gesture.deltaY) > Math.abs(e.gesture.deltaX)) {
+                    dragOffset.y = e.gesture.deltaY < 0 ? -dragOffsetY : dragOffsetY;
+                    moveVector.y = e.gesture.deltaY < 0 ? -1 : 1;
+                } else {
+                    dragOffset.x = e.gesture.deltaX < 0 ? -dragOffsetX : dragOffsetX;
+                    moveVector.x = e.gesture.deltaX < 0 ? -1 : 1;
+                }
+                var future = displace(game.gameState.selected, moveVector);
+                if (checkCollision(future, game.gameState.selected).every(function (col) {
+                    return col == false;
+                })) {
+                    game.gameState.selected.forEach(function (coord) {
+                        var c = game.gridView.getSVGElement(coord);
+                        c.animate(100, '>', 0).move(c.cannonicalTransform.x + dragOffset.x, c.cannonicalTransform.y + dragOffset.y);
+                    });
+                }
             });
         });
     };
 
     SquareGame.prototype.init = function (gp) {
+        var _this = this;
         var gs = {
             activeCells: gp.maxVal * (gp.maxVal + 1) / 2 - 1,
             disableMouse: false,
@@ -965,6 +1024,18 @@ var SquareGame = (function () {
         this.gridView = View.fromModel(this.grid);
         this.draw();
         this.extendUI();
+
+        if (this.gameParams.gameType == 0 /* SURVIVAL */) {
+            this.survivalMechanic = new SurvivalMechanic(this);
+        }
+
+        if (this.updateID != null) {
+            clearInterval(this.updateID);
+        }
+
+        this.updateID = setInterval(function () {
+            return _this.update(_this);
+        }, 1000 / 5);
     };
 
     SquareGame.prototype.update = function (game) {
@@ -977,10 +1048,18 @@ var SquareGame = (function () {
 
         if (game.clearedStage()) {
             if (game.gameParams.gameType == 0 /* SURVIVAL */) {
-                alert("Holy crap you beat survival mode! How is that even possible");
+                alert("Holy crap you beat survival mode! How is that even possible. Let's see you do it again.");
+
+                // restart
+                game.init(game.gameParams);
             } else {
                 game.advance();
             }
+        } else if (game.over()) {
+            alert("Better luck next time");
+
+            // restart
+            game.init(game.gameParams);
         }
 
         if (game.gameParams.gameType == 0 /* SURVIVAL */) {
@@ -995,8 +1074,8 @@ var SquareGame = (function () {
     SquareGame.prototype.procGenGrid = function (grid, gp) {
         var count = [];
 
-        for (var i = 0; i < gp.gridw * gp.gridh; i++) {
-            var val = Math.round(Math.random() * (gp.maxVal - 2) + 2);
+        for (var i = 0; i < grid.size; i++) {
+            var val = Math.round(Math.random() * (gp.maxVal - MIN_VAL) + MIN_VAL);
             grid.setFlat(i, new Tile(2 /* REGULAR */, val));
             if (count[val] == null) {
                 count[val] = 0;
@@ -1004,7 +1083,7 @@ var SquareGame = (function () {
             count[val]++;
         }
 
-        for (i = 0; i < gp.gridw * gp.gridh; i++) {
+        for (i = 0; i < grid.size; i++) {
             if (Math.random() > 0.4) {
                 if (count[grid.getFlat(i).value] > grid.getFlat(i).value) {
                     count[grid.getFlat(i).value]--;
@@ -1013,14 +1092,43 @@ var SquareGame = (function () {
             }
         }
 
+        for (i = MIN_VAL; i <= gp.maxVal; i++) {
+            if (count[i] > i) {
+                for (var j = 0; j < grid.getTileArray().length && count[i] > i; j++) {
+                    if (grid.getFlat(j).value == i) {
+                        grid.setFlat(j, new Tile(1 /* EMPTY */, -1));
+                        count[i]--;
+                    }
+                }
+            }
+        }
+
         for (i = 2; i <= gp.maxVal; i++) {
-            if (count[i] < i || count[i] % i != 0) {
-                while (count[i] < i || count[i] % i != 0) {
+            if (count[i] < i) {
+                while (count[i] < i) {
                     var randIndex = Math.round(Math.random() * (gp.gridw * gp.gridh - 1));
                     if (grid.getFlat(randIndex).type == 1 /* EMPTY */) {
                         grid.setFlat(randIndex, new Tile(2 /* REGULAR */, i));
                         count[i]++;
                     }
+                }
+            }
+        }
+
+        for (var y = 0; y < grid.gridh; y++) {
+            for (var x = 0; x < grid.gridw; x++) {
+                var coords = new CartesianCoords(x, y);
+                var t = grid.get(coords);
+                if (this.floodAcquire(coords, t).length == t.value) {
+                    do {
+                        grid.set(coords, new Tile(1 /* EMPTY */, -1));
+                        var newCoords = new CartesianCoords(Math.round(Math.random() * grid.gridw), Math.round(Math.random() * grid.gridh));
+                        while (grid.get(newCoords).type != 1 /* EMPTY */) {
+                            newCoords = new CartesianCoords(Math.round(Math.random() * grid.gridw), Math.round(Math.random() * grid.gridh));
+                        }
+                        grid.set(newCoords, t);
+                        var canPop = this.floodAcquire(newCoords, t).length == t.value;
+                    } while(canPop);
                 }
             }
         }
@@ -1303,6 +1411,10 @@ var SquareGame = (function () {
         });
 
         game.gameState.selected = oldset; // shallow copy is fine
+    };
+
+    SquareGame.prototype.over = function () {
+        return this.gameState.activeCells >= this.grid.size - 1;
     };
 
     SquareGame.prototype.clearedStage = function () {
