@@ -394,7 +394,7 @@ var SurvivalMechanic = (function () {
             respawns: 0,
             maxRespawnsTillLimit: 100,
             minRespawnInterval: 3000,
-            maxRespawnInterval: 10000
+            maxRespawnInterval: 6000
         };
         this.timeSinceLastRespawn = 0;
     }
@@ -418,9 +418,23 @@ var SurvivalMechanic = (function () {
 
     SurvivalMechanic.prototype.spawnNewTiles = function () {
         var _this = this;
-        var tileN = Math.round(Math.random() * (this.game.gameParams.maxVal - MIN_VAL) + MIN_VAL);
+        var exists = [];
+        for (var i = 0; i < this.game.grid.size; i++) {
+            exists[this.game.grid.getFlat(i).value] = true;
+        }
+
+        var nonexistent = [];
+        for (var i = MIN_VAL; i < this.game.gameParams.maxVal; i++) {
+            if (exists[i] == null) {
+                nonexistent.push(i);
+            }
+        }
+
+        console.log(nonexistent);
+
+        var tileN = nonexistent[Math.round(Math.random() * nonexistent.length)];
         while (this.game.grid.size - this.game.gameState.activeCells < tileN) {
-            tileN = Math.round(Math.random() * (this.game.gameParams.maxVal - MIN_VAL) + MIN_VAL);
+            tileN = nonexistent[Math.round(Math.random() * nonexistent.length)];
         }
 
         var tilesToPlace = tileN;
