@@ -913,8 +913,8 @@ var SquareGame = (function () {
         };
 
         if (gp.gameType == 0 /* SURVIVAL */) {
-            gp.gridw = 10;
-            gp.gridh = 10;
+            gp.gridw = 6;
+            gp.gridh = 6;
             gp.maxVal = 9;
         }
 
@@ -1072,74 +1072,128 @@ var SquareGame = (function () {
     // 1) have n of tiles labeled n.
     // 2) have enough empty spaces to be tractable (and fun)
     SquareGame.prototype.procGenGrid = function (grid, gp) {
-        var count = [];
-
-        for (var i = 0; i < grid.size; i++) {
-            var val = Math.round(Math.random() * (gp.maxVal - MIN_VAL) + MIN_VAL);
-            grid.setFlat(i, new Tile(2 /* REGULAR */, val));
-            if (count[val] == null) {
-                count[val] = 0;
-            }
-            count[val]++;
-        }
-
-        for (i = 0; i < grid.size; i++) {
-            if (Math.random() > 0.4) {
-                if (count[grid.getFlat(i).value] > grid.getFlat(i).value) {
-                    count[grid.getFlat(i).value]--;
-                    grid.setFlat(i, new Tile(1 /* EMPTY */, -1));
+        if (gp.gameType == 0 /* SURVIVAL */) {
+            // decide which tiles we're gonna generate to start this level
+            var done = false;
+            var acc = 0;
+            var toGenerate = [];
+            while (!done) {
+                var val = Math.round(Math.random() * (gp.maxVal - MIN_VAL) + MIN_VAL);
+                while (toGenerate.some(function (v) {
+                    return v == val;
+                })) {
+                    val = Math.round(Math.random() * (gp.maxVal - MIN_VAL) + MIN_VAL);
+                }
+                if (acc + val < grid.size - 2 * gp.gridw) {
+                    toGenerate.push(val);
+                    acc += val;
+                } else {
+                    done = true;
                 }
             }
-        }
 
-        for (i = MIN_VAL; i <= gp.maxVal; i++) {
-            if (count[i] > i) {
-                for (var j = 0; j < grid.getTileArray().length && count[i] > i; j++) {
-                    if (grid.getFlat(j).value == i) {
-                        grid.setFlat(j, new Tile(1 /* EMPTY */, -1));
-                        count[i]--;
-                    }
-                }
-            }
-        }
-
-        for (i = 2; i <= gp.maxVal; i++) {
-            if (count[i] < i) {
-                while (count[i] < i) {
-                    var randIndex = Math.round(Math.random() * (gp.gridw * gp.gridh - 1));
+            // add necessary elements
+            this.gameState.activeCells = 0;
+            while (toGenerate.length > 0) {
+                var val = toGenerate.pop();
+                var added = 0;
+                while (added < val) {
+                    var randIndex = Math.round(Math.random() * (grid.size - 1));
                     if (grid.getFlat(randIndex).type == 1 /* EMPTY */) {
-                        grid.setFlat(randIndex, new Tile(2 /* REGULAR */, i));
-                        count[i]++;
+                        grid.setFlat(randIndex, new Tile(2 /* REGULAR */, val));
+                        added++;
+                    }
+                }
+                this.gameState.activeCells += val;
+            }
+
+            for (var y = 0; y < grid.gridh; y++) {
+                for (var x = 0; x < grid.gridw; x++) {
+                    var coords = new CartesianCoords(x, y);
+                    var t = grid.get(coords);
+                    if (this.floodAcquire(coords, t).length == t.value) {
+                        do {
+                            grid.set(coords, new Tile(1 /* EMPTY */, -1));
+                            var newCoords = new CartesianCoords(Math.round(Math.random() * grid.gridw), Math.round(Math.random() * grid.gridh));
+                            while (grid.get(newCoords).type != 1 /* EMPTY */) {
+                                newCoords = new CartesianCoords(Math.round(Math.random() * grid.gridw), Math.round(Math.random() * grid.gridh));
+                            }
+                            grid.set(newCoords, t);
+                            var canPop = this.floodAcquire(newCoords, t).length == t.value;
+                        } while(canPop);
                     }
                 }
             }
-        }
+        } else {
+            var count = [];
 
-        for (var y = 0; y < grid.gridh; y++) {
-            for (var x = 0; x < grid.gridw; x++) {
-                var coords = new CartesianCoords(x, y);
-                var t = grid.get(coords);
-                if (this.floodAcquire(coords, t).length == t.value) {
-                    do {
-                        grid.set(coords, new Tile(1 /* EMPTY */, -1));
-                        var newCoords = new CartesianCoords(Math.round(Math.random() * grid.gridw), Math.round(Math.random() * grid.gridh));
-                        while (grid.get(newCoords).type != 1 /* EMPTY */) {
-                            newCoords = new CartesianCoords(Math.round(Math.random() * grid.gridw), Math.round(Math.random() * grid.gridh));
-                        }
-                        grid.set(newCoords, t);
-                        var canPop = this.floodAcquire(newCoords, t).length == t.value;
-                    } while(canPop);
+            for (var i = 0; i < grid.size; i++) {
+                var val = Math.round(Math.random() * (gp.maxVal - MIN_VAL) + MIN_VAL);
+                grid.setFlat(i, new Tile(2 /* REGULAR */, val));
+                if (count[val] == null) {
+                    count[val] = 0;
+                }
+                count[val]++;
+            }
+
+            for (i = 0; i < grid.size; i++) {
+                if (Math.random() > 0.4) {
+                    if (count[grid.getFlat(i).value] > grid.getFlat(i).value) {
+                        count[grid.getFlat(i).value]--;
+                        grid.setFlat(i, new Tile(1 /* EMPTY */, -1));
+                    }
                 }
             }
-        }
 
-        // count active cells
-        this.gameState.activeCells = 0;
-        for (i = 2; i <= gp.maxVal; i++) {
-            if (count[i]) {
-                this.gameState.activeCells += count[i];
-            } else {
-                console.log("bad state:" + i + " is null");
+            for (i = MIN_VAL; i <= gp.maxVal; i++) {
+                if (count[i] > i) {
+                    for (var j = 0; j < grid.getTileArray().length && count[i] > i; j++) {
+                        if (grid.getFlat(j).value == i) {
+                            grid.setFlat(j, new Tile(1 /* EMPTY */, -1));
+                            count[i]--;
+                        }
+                    }
+                }
+            }
+
+            for (i = 2; i <= gp.maxVal; i++) {
+                if (count[i] < i) {
+                    while (count[i] < i) {
+                        var randIndex = Math.round(Math.random() * (gp.gridw * gp.gridh - 1));
+                        if (grid.getFlat(randIndex).type == 1 /* EMPTY */) {
+                            grid.setFlat(randIndex, new Tile(2 /* REGULAR */, i));
+                            count[i]++;
+                        }
+                    }
+                }
+            }
+
+            for (var y = 0; y < grid.gridh; y++) {
+                for (var x = 0; x < grid.gridw; x++) {
+                    var coords = new CartesianCoords(x, y);
+                    var t = grid.get(coords);
+                    if (this.floodAcquire(coords, t).length == t.value) {
+                        do {
+                            grid.set(coords, new Tile(1 /* EMPTY */, -1));
+                            var newCoords = new CartesianCoords(Math.round(Math.random() * grid.gridw), Math.round(Math.random() * grid.gridh));
+                            while (grid.get(newCoords).type != 1 /* EMPTY */) {
+                                newCoords = new CartesianCoords(Math.round(Math.random() * grid.gridw), Math.round(Math.random() * grid.gridh));
+                            }
+                            grid.set(newCoords, t);
+                            var canPop = this.floodAcquire(newCoords, t).length == t.value;
+                        } while(canPop);
+                    }
+                }
+            }
+
+            // count active cells
+            this.gameState.activeCells = 0;
+            for (i = 2; i <= gp.maxVal; i++) {
+                if (count[i]) {
+                    this.gameState.activeCells += count[i];
+                } else {
+                    console.log("bad state:" + i + " is null");
+                }
             }
         }
     };
