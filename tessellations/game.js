@@ -996,25 +996,45 @@ var SquareGame = (function () {
                 }
 
                 // show where we're moving
+                var fudge_epsilon = 20;
                 var cellw = Math.floor(game.canvas.width() / game.gameParams.gridw), cellh = Math.floor(game.canvas.width() / game.gameParams.gridh);
+
                 var dragOffsetX = cellw / 4;
                 var dragOffsetY = cellh / 4;
                 var dragOffset = { x: 0, y: 0 };
                 var moveVector = { x: 0, y: 0 };
-                if (Math.abs(e.gesture.deltaY) > Math.abs(e.gesture.deltaX)) {
-                    dragOffset.y = e.gesture.deltaY < 0 ? -dragOffsetY : dragOffsetY;
-                    moveVector.y = e.gesture.deltaY < 0 ? -1 : 1;
-                } else {
-                    dragOffset.x = e.gesture.deltaX < 0 ? -dragOffsetX : dragOffsetX;
-                    moveVector.x = e.gesture.deltaX < 0 ? -1 : 1;
+
+                var moved = false;
+                if (Math.abs(e.gesture.deltaY) > fudge_epsilon || Math.abs(e.gesture.deltaX) > fudge_epsilon) {
+                    if (Math.abs(e.gesture.deltaY) > Math.abs(e.gesture.deltaX)) {
+                        if (Math.abs(e.gesture.deltaY) > fudge_epsilon) {
+                            dragOffset.y = e.gesture.deltaY < 0 ? -dragOffsetY : dragOffsetY;
+                            moveVector.y = e.gesture.deltaY < 0 ? -1 : 1;
+                            moved = true;
+                        }
+                    } else {
+                        if (Math.abs(e.gesture.deltaX) > fudge_epsilon) {
+                            dragOffset.x = e.gesture.deltaX < 0 ? -dragOffsetX : dragOffsetX;
+                            moveVector.x = e.gesture.deltaX < 0 ? -1 : 1;
+                            moved = true;
+                        }
+                    }
                 }
-                var future = displace(game.gameState.selected, moveVector);
-                if (checkCollision(future, game.gameState.selected).every(function (col) {
-                    return col == false;
-                })) {
+
+                if (moved) {
+                    var future = displace(game.gameState.selected, moveVector);
+                    if (checkCollision(future, game.gameState.selected).every(function (col) {
+                        return col == false;
+                    })) {
+                        game.gameState.selected.forEach(function (coord) {
+                            var c = game.gridView.getSVGElement(coord);
+                            c.animate(100, '>', 0).move(c.cannonicalTransform.x + dragOffset.x, c.cannonicalTransform.y + dragOffset.y);
+                        });
+                    }
+                } else {
                     game.gameState.selected.forEach(function (coord) {
                         var c = game.gridView.getSVGElement(coord);
-                        c.animate(100, '>', 0).move(c.cannonicalTransform.x + dragOffset.x, c.cannonicalTransform.y + dragOffset.y);
+                        c.animate(100, '>', 0).move(c.cannonicalTransform.x, c.cannonicalTransform.y);
                     });
                 }
             });
