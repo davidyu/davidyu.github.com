@@ -218,21 +218,43 @@ var View;
             cell.coords = new CartesianCoords(x, y);
             cell.rect = rect;
             cell.text = text;
+            cell.e = e;
             cell.cannonicalTransform = { x: cell.transform('x'), y: cell.transform('y') };
 
             return cell;
         };
 
-        SquareView.prototype.draw = function (canvas) {
+        SquareView.prototype.updateTimerBar = function (canvas, frac, color) {
+            if (canvas == null) {
+                this.timerBar.remove();
+                return;
+            }
+            var oldw = 0;
+            ;
+            if (this.timerBar != null) {
+                oldw = this.timerBar.width();
+                this.timerBar.remove();
+            }
+            var barHeight = 10;
+            this.timerBar = canvas.rect(oldw, barHeight).radius(5);
+            this.timerBar.attr({ 'fill': color }).transform({ x: 0, y: canvas.height() - barHeight }).animate(100, '>', 0).attr({ 'width': frac * canvas.width() });
+        };
+
+        SquareView.prototype.resetView = function (canvas) {
             if (this.model == null)
                 return;
-
-            this.cells = [];
+            if (this.cells == null)
+                this.cells = [];
 
             for (var y = 0; y < this.model.gridh; y++) {
                 for (var x = 0; x < this.model.gridw; x++) {
                     var e = this.model.get(new CartesianCoords(x, y));
-                    this.cells[this.model.toFlat(x, y)] = this.drawTile(canvas, x, y, e);
+                    if (this.cells[this.model.toFlat(x, y)] == null || this.cells[this.model.toFlat(x, y)].e != e) {
+                        if (this.cells[this.model.toFlat(x, y)] != null) {
+                            this.cells[this.model.toFlat(x, y)].clear();
+                        }
+                        this.cells[this.model.toFlat(x, y)] = this.drawTile(canvas, x, y, e);
+                    }
                 }
             }
         };
@@ -310,7 +332,10 @@ var View;
             return cell;
         };
 
-        HexView.prototype.draw = function (canvas) {
+        HexView.prototype.updateTimerBar = function (canvas, percentage, color) {
+        };
+
+        HexView.prototype.resetView = function (canvas) {
             if (this.model == null)
                 return;
 
@@ -386,6 +411,7 @@ var Utils = (function () {
     return Utils;
 })();
 /// <reference path="./game.ts" />
+/// <reference path="./respawnsys.ts" />
 
 var SurvivalMechanic = (function () {
     function SurvivalMechanic(game) {
@@ -397,11 +423,16 @@ var SurvivalMechanic = (function () {
             maxRespawnInterval: 6000
         };
         this.timeSinceLastRespawn = 0;
+        this.next = this.computeNext();
     }
     SurvivalMechanic.prototype.timeTillNextRespawn = function () {
         // normalization factor
         var a = (this.params.maxRespawnInterval - this.params.minRespawnInterval) / Math.sqrt(this.params.maxRespawnsTillLimit);
         return a * Math.sqrt(this.params.maxRespawnsTillLimit - this.params.respawns) + this.params.minRespawnInterval;
+    };
+
+    SurvivalMechanic.prototype.progressTillNextRespawn = function () {
+        return this.timeSinceLastRespawn / this.timeTillNextRespawn();
     };
 
     SurvivalMechanic.prototype.update = function (dt) {
@@ -416,8 +447,7 @@ var SurvivalMechanic = (function () {
         }
     };
 
-    SurvivalMechanic.prototype.spawnNewTiles = function () {
-        var _this = this;
+    SurvivalMechanic.prototype.computeNext = function () {
         var exists = [];
         for (var i = 0; i < this.game.grid.size; i++) {
             exists[this.game.grid.getFlat(i).value] = true;
@@ -430,15 +460,17 @@ var SurvivalMechanic = (function () {
             }
         }
 
-        console.log(nonexistent);
-
         var tileN = nonexistent[Math.round(Math.random() * nonexistent.length)];
-        while (this.game.grid.size - this.game.gameState.activeCells < tileN) {
+        while (tileN == this.game.gameState.lastCleared || this.game.grid.size - this.game.gameState.activeCells < tileN) {
             tileN = nonexistent[Math.round(Math.random() * nonexistent.length)];
         }
 
-        var tilesToPlace = tileN;
+        return tileN;
+    };
 
+    SurvivalMechanic.prototype.spawnNewTiles = function () {
+        var _this = this;
+        var tilesToPlace = this.next;
         var tileIndices = [];
 
         while (tilesToPlace > 0) {
@@ -449,10 +481,10 @@ var SurvivalMechanic = (function () {
                     if (this.game.grid.getFlat(i).type == 1 /* EMPTY */) {
                         spacesLeft--;
                         if (spacesLeft == 0) {
-                            this.game.grid.setFlat(i, new Tile(2 /* REGULAR */, tileN));
+                            this.game.grid.setFlat(i, new Tile(2 /* REGULAR */, this.next));
                             insertedPosition = i;
                         } else if (Math.random() > 0.5) {
-                            this.game.grid.setFlat(i, new Tile(2 /* REGULAR */, tileN));
+                            this.game.grid.setFlat(i, new Tile(2 /* REGULAR */, this.next));
                             insertedPosition = i;
                             break;
                         }
@@ -463,7 +495,7 @@ var SurvivalMechanic = (function () {
                 while (this.game.grid.getFlat(randomPlace).type != 1 /* EMPTY */) {
                     randomPlace = Math.round(Math.random() * this.game.grid.size);
                 }
-                this.game.grid.setFlat(randomPlace, new Tile(2 /* REGULAR */, tileN));
+                this.game.grid.setFlat(randomPlace, new Tile(2 /* REGULAR */, this.next));
                 insertedPosition = randomPlace;
             }
 
@@ -483,6 +515,8 @@ var SurvivalMechanic = (function () {
                 _this.game.extendUI();
             });
         });
+
+        this.next = this.computeNext();
     };
     return SurvivalMechanic;
 })();
@@ -530,7 +564,7 @@ var HexGame = (function () {
     }
     HexGame.prototype.draw = function () {
         this.canvas.clear();
-        this.gridView.draw(this.canvas);
+        this.gridView.resetView(this.canvas);
     };
 
     HexGame.prototype.extendUI = function () {
@@ -595,7 +629,9 @@ var HexGame = (function () {
         var gs = {
             activeCells: gp.maxVal * (gp.maxVal + 1) / 2 - 1,
             disableMouse: false,
-            selected: []
+            selected: [],
+            lastCleared: 0,
+            numMoves: 0
         };
 
         this.grid = new Model.Hex(Math.floor(gp.gridw / 2), new Tile(1 /* EMPTY */, 0), new Tile(0 /* OUT_OF_BOUNDS */, -1));
@@ -724,6 +760,7 @@ var HexGame = (function () {
                         game.gameState.activeCells--;
                         if (i == startTile.value - 1) {
                             postCallback();
+                            game.gameState.lastCleared = startTile.value;
                         }
                     });
                 } else if (game.grid.get(cell).type == 5 /* LAVA */) {
@@ -893,11 +930,94 @@ var HexGame = (function () {
     };
     return HexGame;
 })();
+/// <reference path="./game.ts" />
+/// <reference path="./respawnsys.ts" />
+var PuzzleRespawnSys = (function () {
+    function PuzzleRespawnSys(game) {
+        this.game = game;
+        this.next = this.computeNext();
+        this.movesAtLastSpawn = 0;
+        this.movesTillNext = 5;
+    }
+    PuzzleRespawnSys.prototype.progressTillNextRespawn = function () {
+        return (this.game.gameState.numMoves - this.movesAtLastSpawn) / (this.movesTillNext - this.movesAtLastSpawn);
+    };
+
+    PuzzleRespawnSys.prototype.computeNext = function () {
+        var tileN = Math.round(Math.random() * (this.game.gameParams.maxVal - MIN_VAL)) + MIN_VAL;
+        while (tileN == this.game.gameState.lastCleared || this.game.grid.size - this.game.gameState.activeCells < tileN) {
+            tileN = Math.round(Math.random() * (this.game.gameParams.maxVal - MIN_VAL)) + MIN_VAL;
+        }
+
+        return tileN;
+    };
+
+    PuzzleRespawnSys.prototype.update = function (dt) {
+        if (this.game.gameState.numMoves > this.movesTillNext) {
+            this.spawnNewTiles();
+            this.movesAtLastSpawn = this.movesTillNext;
+            this.movesTillNext += 5;
+        }
+    };
+
+    PuzzleRespawnSys.prototype.spawnNewTiles = function () {
+        var _this = this;
+        var tilesToPlace = this.next;
+        var tileIndices = [];
+
+        while (tilesToPlace > 0) {
+            var insertedPosition;
+            if (this.game.grid.size - this.game.gameState.activeCells < 10) {
+                var spacesLeft = this.game.grid.size - this.game.gameState.activeCells;
+                for (var i = 0; i < this.game.grid.size; i++) {
+                    if (this.game.grid.getFlat(i).type == 1 /* EMPTY */) {
+                        spacesLeft--;
+                        if (spacesLeft == 0) {
+                            this.game.grid.setFlat(i, new Tile(2 /* REGULAR */, this.next));
+                            insertedPosition = i;
+                        } else if (Math.random() > 0.5) {
+                            this.game.grid.setFlat(i, new Tile(2 /* REGULAR */, this.next));
+                            insertedPosition = i;
+                            break;
+                        }
+                    }
+                }
+            } else {
+                var randomPlace = Math.round(Math.random() * this.game.grid.size);
+                while (this.game.grid.getFlat(randomPlace).type != 1 /* EMPTY */) {
+                    randomPlace = Math.round(Math.random() * this.game.grid.size);
+                }
+                this.game.grid.setFlat(randomPlace, new Tile(2 /* REGULAR */, this.next));
+                insertedPosition = randomPlace;
+            }
+
+            tilesToPlace--;
+            this.game.gameState.activeCells++;
+
+            tileIndices.push(insertedPosition);
+        }
+
+        this.game.draw();
+        this.game.extendUI();
+
+        tileIndices.forEach(function (i) {
+            var c = _this.game.gridView.getSVGElements()[i];
+            c.scale(0, 0);
+            c.animate(200, '>', 0).scale(1, 1).after(function () {
+                _this.game.extendUI();
+            });
+        });
+
+        this.next = this.computeNext();
+    };
+    return PuzzleRespawnSys;
+})();
 /// <reference path="lib/chroma-js.d.ts" />
 /// <reference path="lib/hammerjs.d.ts" />
 /// <reference path="lib/svgjs.d.ts" />
 /// <reference path="lib/utils.ts" />
 /// <reference path="./game.ts" />
+/// <reference path="./puzzlerespawnsys.ts" />
 /// <reference path="./survivalmechanic.ts" />
 var CardinalDirection;
 (function (CardinalDirection) {
@@ -912,7 +1032,7 @@ var SquareGame = (function () {
         var _this = this;
         this.timeSinceLastUpdate = new Date().getTime();
         if (canvas == null) {
-            canvas = SVG('screen').size(720, 720);
+            canvas = SVG('screen').size(600, 610);
             console.log("no canvas supplied, starting with default canvas with dims " + canvas.width() + ", " + canvas.height());
         }
 
@@ -939,8 +1059,7 @@ var SquareGame = (function () {
         });
     }
     SquareGame.prototype.draw = function () {
-        this.canvas.clear();
-        this.gridView.draw(this.canvas);
+        this.gridView.resetView(this.canvas);
     };
 
     SquareGame.prototype.extendUI = function () {
@@ -950,6 +1069,7 @@ var SquareGame = (function () {
         cells.forEach(function (cell, i) {
             if (cell === null)
                 return;
+            cell.mouseover(null).mouseout(null);
             cell.mouseover(function () {
                 if (game.gameState.disableMouse)
                     return;
@@ -987,6 +1107,9 @@ var SquareGame = (function () {
                 });
             }
             var hammer = Hammer(cell.node, { preventDefault: true });
+
+            hammer.on("drag swipe", null);
+
             hammer.on("drag swipe", function (e) {
                 // 'this' refers to the DOM node directly here
                 if (game.grid.get(cell.coords).type != 4 /* DEACTIVATED */) {
@@ -999,8 +1122,8 @@ var SquareGame = (function () {
                 var fudge_epsilon = 20;
                 var cellw = Math.floor(game.canvas.width() / game.gameParams.gridw), cellh = Math.floor(game.canvas.width() / game.gameParams.gridh);
 
-                var dragOffsetX = cellw / 4;
-                var dragOffsetY = cellh / 4;
+                var dragOffsetX = cellw / 3;
+                var dragOffsetY = cellh / 3;
                 var dragOffset = { x: 0, y: 0 };
                 var moveVector = { x: 0, y: 0 };
 
@@ -1046,7 +1169,9 @@ var SquareGame = (function () {
         var gs = {
             activeCells: gp.maxVal * (gp.maxVal + 1) / 2 - 1,
             disableMouse: false,
-            selected: []
+            selected: [],
+            lastCleared: 0,
+            numMoves: 0
         };
 
         this.gameParams = gp;
@@ -1059,8 +1184,13 @@ var SquareGame = (function () {
         this.draw();
         this.extendUI();
 
-        if (this.gameParams.gameType == 0 /* SURVIVAL */) {
-            this.survivalMechanic = new SurvivalMechanic(this);
+        switch (this.gameParams.gameType) {
+            case 0 /* SURVIVAL */:
+                this.survivalMechanic = new SurvivalMechanic(this);
+                break;
+            case 1 /* PUZZLE */:
+                this.respawnSys = new PuzzleRespawnSys(this);
+                break;
         }
 
         if (this.updateID != null) {
@@ -1098,6 +1228,12 @@ var SquareGame = (function () {
 
         if (game.gameParams.gameType == 0 /* SURVIVAL */) {
             game.survivalMechanic.update(dt);
+            var color = game.gridView.colorizer.fromTile(new Tile(2 /* REGULAR */, game.survivalMechanic.next));
+            game.gridView.updateTimerBar(game.canvas, game.survivalMechanic.progressTillNextRespawn(), color);
+        } else {
+            game.respawnSys.update(dt);
+            var color = game.gridView.colorizer.fromTile(new Tile(2 /* REGULAR */, game.respawnSys.next));
+            game.gridView.updateTimerBar(game.canvas, game.respawnSys.progressTillNextRespawn(), color);
         }
     };
 
@@ -1266,8 +1402,10 @@ var SquareGame = (function () {
                 game.grid.set(cell, new Tile(fromVals[i].type, fromVals[i].value));
             });
 
-            for (var i = 0; i < from.length; i++) {
-                var f = game.gridView.getSVGElement(from[i]);
+            // using a forEach makes sure the i is probably saved in the closure,
+            // otherwise, we get multiple calls here to anim.after because the condition for i == 0 is always fulfilled
+            from.forEach(function (fromElement, i) {
+                var f = game.gridView.getSVGElement(fromElement);
                 var t = game.gridView.getSVGElement(to[i]);
 
                 game.gameState.disableMouse = true;
@@ -1276,6 +1414,7 @@ var SquareGame = (function () {
 
                 if (i == 0) {
                     anim.after(function () {
+                        anim.stop();
                         game.gameState.disableMouse = false;
                         game.prune(to[0], function () {
                             game.draw();
@@ -1285,7 +1424,7 @@ var SquareGame = (function () {
                         });
                     });
                 }
-            }
+            });
         }
 
         if (game.grid.get(tileToMove).type == 1 /* EMPTY */) {
@@ -1350,14 +1489,36 @@ var SquareGame = (function () {
             checkCollision(newset, oldset).forEach(function (col, i) {
                 if (col && game.grid.get(newset[i]).type != 0 /* OUT_OF_BOUNDS */) {
                     if (game.grid.get(newset[i]).value < thresholdValue && !marked.get(newset[i])) {
-                        game.floodAcquire(newset[i]).forEach(function (c) {
-                            marked.set(c);
-                        });
-                        game.justMove(newset[i], direction, game);
+                        var newnewset = displace(newset, delta_vec);
+                        if (game.grid.get(newnewset[i]).type != 0 /* OUT_OF_BOUNDS */ && game.grid.get(newnewset[i]).value > game.grid.get(newset[i]).value) {
+                            marked.set(newset[i]);
+                            game.crush(newset[i], function () {
+                                game.justMove(oldset[i], direction, game);
+                            });
+                        } else {
+                            game.floodAcquire(newset[i]).forEach(function (c) {
+                                marked.set(c);
+                            });
+                            game.justMove(newset[i], direction, game);
+                        }
                     }
                 }
             });
         });
+    };
+
+    SquareGame.prototype.crush = function (loc, postCallback) {
+        if (this.grid.get(loc).type == 2 /* REGULAR */) {
+            this.grid.set(loc, new Tile(1 /* EMPTY */, -1));
+            var c = this.gridView.getSVGElement(loc);
+            var game = this;
+            c.animate(200, '>', 0).scale(0, 0).after(function () {
+                game.gameState.activeCells--;
+                console.log("CRUSH:" + game.gameState.activeCells);
+                game.gameState.lastCleared = game.grid.get(loc).value;
+                postCallback();
+            });
+        }
     };
 
     SquareGame.prototype.onDrag = function (e, game) {
@@ -1407,17 +1568,21 @@ var SquareGame = (function () {
                 game.grid.set(cell, new Tile(fromVals[i].type, fromVals[i].value));
             });
 
-            for (var i = 0; i < from.length; i++) {
-                var f = game.gridView.getSVGElement(from[i]);
-                var t = game.gridView.getSVGElement(to[i]);
+            game.gameState.disableMouse = true;
 
-                game.gameState.disableMouse = true;
+            // using a forEach makes sure the i is probably saved in the closure,
+            // otherwise, we get multiple calls here to anim.after because the condition for i == 0 is always fulfilled
+            from.forEach(function (fromElement, i) {
+                var f = game.gridView.getSVGElement(fromElement);
+                var t = game.gridView.getSVGElement(to[i]);
 
                 var anim = f.animate(100, '>', 0).move(t.transform('x'), t.transform('y'));
 
                 if (i == 0) {
                     anim.after(function () {
+                        anim.stop();
                         game.gameState.disableMouse = false;
+                        game.gameState.numMoves++;
                         game.prune(to[0], function () {
                             game.draw();
                             game.extendUI();
@@ -1426,7 +1591,7 @@ var SquareGame = (function () {
                         });
                     });
                 }
-            }
+            });
         }
 
         if (game.grid.get(game.gameState.selected[0]).type == 1 /* EMPTY */) {
@@ -1489,10 +1654,18 @@ var SquareGame = (function () {
             checkCollision(newset, oldset).forEach(function (col, i) {
                 if (col && game.grid.get(newset[i]).type != 0 /* OUT_OF_BOUNDS */) {
                     if (game.grid.get(newset[i]).value < thresholdValue && !marked.get(newset[i])) {
-                        game.floodAcquire(newset[i]).forEach(function (c) {
-                            marked.set(c);
-                        });
-                        game.justMove(newset[i], moveDirection, game);
+                        var newnewset = displace(newset, delta_vec);
+                        if (game.grid.get(newnewset[i]).type != 0 /* OUT_OF_BOUNDS */ && game.grid.get(newnewset[i]).value > game.grid.get(newset[i]).value) {
+                            marked.set(newset[i]);
+                            game.crush(newset[i], function () {
+                                game.justMove(oldset[i], moveDirection, game);
+                            });
+                        } else {
+                            game.floodAcquire(newset[i]).forEach(function (c) {
+                                marked.set(c);
+                            });
+                            game.justMove(newset[i], moveDirection, game);
+                        }
                     }
                 }
             });
@@ -1518,6 +1691,7 @@ var SquareGame = (function () {
 
         gp.maxVal = gp.level + 3;
 
+        this.gridView.updateTimerBar(null, null, null);
         this.init(gp);
     };
 
@@ -1571,6 +1745,7 @@ var SquareGame = (function () {
         var startTile = this.grid.get(start);
         var targets = this.floodAcquire(start, startTile);
         if (targets.length >= startTile.value) {
+            console.log("pruning " + targets.length + " tiles");
             if (startTile.type == 4 /* DEACTIVATED */)
                 return;
             var game = this;
@@ -1581,16 +1756,17 @@ var SquareGame = (function () {
                     game.grid.set(cell, new Tile(1 /* EMPTY */, -1));
                     var c = game.gridView.getSVGElement(cell);
                     c.animate(200, '>', 0).scale(0, 0).after(function () {
+                        c.stop();
                         game.gameState.activeCells--;
+                        console.log("PRUNE:" + game.gameState.activeCells);
                         if (i == startTile.value - 1) {
                             postCallback();
+                            game.gameState.lastCleared = startTile.value;
                         }
                     });
                 } else if (game.grid.get(cell).type == 5 /* LAVA */) {
                     game.grid.set(cell, new Tile(4 /* DEACTIVATED */, game.grid.get(cell).value));
                 }
-
-                console.log(game.gameState.activeCells);
             });
         } else {
             postCallback();
@@ -1607,7 +1783,7 @@ var init = function () {
     var doSurvival = Utils.getURLParameter("survival") == "true";
     var useHexGrid = Utils.getURLParameter("hex") == "true";
 
-    var canvas = SVG('screen').size(720, 720);
+    var canvas = SVG('screen').size(600, 610);
     var gameMode = doSurvival ? 0 /* SURVIVAL */ : 1 /* PUZZLE */;
 
     game = useHexGrid ? new HexGame(gameMode, canvas) : new SquareGame(gameMode, canvas);
