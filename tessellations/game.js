@@ -152,7 +152,7 @@ var Colorizer = (function () {
         };
         this.scale = {};
         this.scale[1 /* EMPTY */] = chroma.scale(['#D7FAF3', '#F3F4E5', '#FFFFFF']);
-        this.scale[2 /* REGULAR */] = chroma.scale(['#FFF', '#D1D0D7', '#FBCA04', '#1DE5A2', '#3692B9', '#615258', '#EB6420', '#C8FF00', '#46727F', '#1D1163']);
+        this.scale[2 /* REGULAR */] = chroma.scale(['#FFF', 'FFABAB', '#FBCA04', '#1DE5A2', '#3692B9', '#615258', '#EB6420', '#C8FF00', '#46727F', '#1D1163']);
         this.scale[5 /* LAVA */] = chroma.scale(['#AE5750', '#F96541', '#FF7939']);
         this.scale[4 /* DEACTIVATED */] = chroma.scale(['#64585A', '#64585A']);
     }
@@ -190,7 +190,7 @@ var View;
             this.colorizer = new Colorizer();
         }
         SquareView.prototype.drawTile = function (canvas, x, y, e) {
-            var cellw = Math.floor(canvas.width() / this.model.gridw), cellh = Math.floor(canvas.width() / this.model.gridh);
+            var cellw = canvas.width() / this.model.gridw, cellh = canvas.width() / this.model.gridh;
 
             var xOffset = cellw / 2;
             var yOffset = cellh / 2;
@@ -235,12 +235,15 @@ var View;
                 oldw = this.timerBar.width();
                 this.timerBar.remove();
             }
+            if (color == null) {
+                color = this.colorizer.scale[2 /* REGULAR */](1 / 9).hex();
+            }
             var barHeight = 10;
-            this.timerBar = canvas.rect(oldw, barHeight).radius(5);
+            this.timerBar = canvas.rect(oldw, barHeight).radius(0);
             this.timerBar.attr({ 'fill': color }).transform({ x: 0, y: canvas.height() - barHeight }).animate(100, '>', 0).attr({ 'width': frac * canvas.width() });
         };
 
-        SquareView.prototype.resetView = function (canvas) {
+        SquareView.prototype.resetView = function (canvas, forceReset) {
             if (this.model == null)
                 return;
             if (this.cells == null)
@@ -249,8 +252,8 @@ var View;
             for (var y = 0; y < this.model.gridh; y++) {
                 for (var x = 0; x < this.model.gridw; x++) {
                     var e = this.model.get(new CartesianCoords(x, y));
-                    if (this.cells[this.model.toFlat(x, y)] == null || this.cells[this.model.toFlat(x, y)].e != e) {
-                        if (this.cells[this.model.toFlat(x, y)] != null) {
+                    if (forceReset || this.cells[this.model.toFlat(x, y)] == null || this.cells[this.model.toFlat(x, y)].e != e) {
+                        if (forceReset || this.cells[this.model.toFlat(x, y)] != null) {
                             this.cells[this.model.toFlat(x, y)].clear();
                         }
                         this.cells[this.model.toFlat(x, y)] = this.drawTile(canvas, x, y, e);
@@ -335,7 +338,7 @@ var View;
         HexView.prototype.updateTimerBar = function (canvas, percentage, color) {
         };
 
-        HexView.prototype.resetView = function (canvas) {
+        HexView.prototype.resetView = function (canvas, forceReset) {
             if (this.model == null)
                 return;
 
@@ -460,9 +463,9 @@ var SurvivalMechanic = (function () {
             }
         }
 
-        var tileN = nonexistent[Math.round(Math.random() * nonexistent.length)];
-        while (tileN == this.game.gameState.lastCleared || this.game.grid.size - this.game.gameState.activeCells < tileN) {
-            tileN = nonexistent[Math.round(Math.random() * nonexistent.length)];
+        var tileN = [nonexistent[Math.round(Math.random() * nonexistent.length)]];
+        while (tileN[0] == this.game.gameState.lastCleared || this.game.grid.size - this.game.gameState.activeCells < tileN[0]) {
+            tileN = [nonexistent[Math.round(Math.random() * nonexistent.length)]];
         }
 
         return tileN;
@@ -470,49 +473,51 @@ var SurvivalMechanic = (function () {
 
     SurvivalMechanic.prototype.spawnNewTiles = function () {
         var _this = this;
-        var tilesToPlace = this.next;
-        var tileIndices = [];
+        this.next.forEach(function (n) {
+            var tilesToPlace = n;
+            var tileIndices = [];
 
-        while (tilesToPlace > 0) {
-            var insertedPosition;
-            if (this.game.grid.size - this.game.gameState.activeCells < 10) {
-                var spacesLeft = this.game.grid.size - this.game.gameState.activeCells;
-                for (var i = 0; i < this.game.grid.size; i++) {
-                    if (this.game.grid.getFlat(i).type == 1 /* EMPTY */) {
-                        spacesLeft--;
-                        if (spacesLeft == 0) {
-                            this.game.grid.setFlat(i, new Tile(2 /* REGULAR */, this.next));
-                            insertedPosition = i;
-                        } else if (Math.random() > 0.5) {
-                            this.game.grid.setFlat(i, new Tile(2 /* REGULAR */, this.next));
-                            insertedPosition = i;
-                            break;
+            while (tilesToPlace > 0) {
+                var insertedPosition;
+                if (_this.game.grid.size - _this.game.gameState.activeCells < 10) {
+                    var spacesLeft = _this.game.grid.size - _this.game.gameState.activeCells;
+                    for (var i = 0; i < _this.game.grid.size; i++) {
+                        if (_this.game.grid.getFlat(i).type == 1 /* EMPTY */) {
+                            spacesLeft--;
+                            if (spacesLeft == 0) {
+                                _this.game.grid.setFlat(i, new Tile(2 /* REGULAR */, n));
+                                insertedPosition = i;
+                            } else if (Math.random() > 0.5) {
+                                _this.game.grid.setFlat(i, new Tile(2 /* REGULAR */, n));
+                                insertedPosition = i;
+                                break;
+                            }
                         }
                     }
+                } else {
+                    var randomPlace = Math.round(Math.random() * _this.game.grid.size);
+                    while (_this.game.grid.getFlat(randomPlace).type != 1 /* EMPTY */) {
+                        randomPlace = Math.round(Math.random() * _this.game.grid.size);
+                    }
+                    _this.game.grid.setFlat(randomPlace, new Tile(2 /* REGULAR */, n));
+                    insertedPosition = randomPlace;
                 }
-            } else {
-                var randomPlace = Math.round(Math.random() * this.game.grid.size);
-                while (this.game.grid.getFlat(randomPlace).type != 1 /* EMPTY */) {
-                    randomPlace = Math.round(Math.random() * this.game.grid.size);
-                }
-                this.game.grid.setFlat(randomPlace, new Tile(2 /* REGULAR */, this.next));
-                insertedPosition = randomPlace;
+
+                tilesToPlace--;
+                _this.game.gameState.activeCells++;
+
+                tileIndices.push(insertedPosition);
             }
 
-            tilesToPlace--;
-            this.game.gameState.activeCells++;
+            _this.game.draw();
+            _this.game.extendUI();
 
-            tileIndices.push(insertedPosition);
-        }
-
-        this.game.draw();
-        this.game.extendUI();
-
-        tileIndices.forEach(function (i) {
-            var c = _this.game.gridView.getSVGElements()[i];
-            c.scale(0, 0);
-            c.animate(200, '>', 0).scale(1, 1).after(function () {
-                _this.game.extendUI();
+            tileIndices.forEach(function (i) {
+                var c = _this.game.gridView.getSVGElements()[i];
+                c.scale(0, 0);
+                c.animate(200, '>', 0).scale(1, 1).after(function () {
+                    _this.game.extendUI();
+                });
             });
         });
 
@@ -935,18 +940,35 @@ var HexGame = (function () {
 var PuzzleRespawnSys = (function () {
     function PuzzleRespawnSys(game) {
         this.game = game;
-        this.next = this.computeNext();
-        this.movesAtLastSpawn = 0;
-        this.movesTillNext = 5;
+        this.movesAtLastSpawn = -1;
+        this.movesTillNext = this.computeMovesTillNext();
     }
+    PuzzleRespawnSys.prototype.computeMovesTillNext = function () {
+        return Math.round(20 / this.game.gameParams.level);
+    };
+
     PuzzleRespawnSys.prototype.progressTillNextRespawn = function () {
         return (this.game.gameState.numMoves - this.movesAtLastSpawn) / (this.movesTillNext - this.movesAtLastSpawn);
     };
 
     PuzzleRespawnSys.prototype.computeNext = function () {
-        var tileN = Math.round(Math.random() * (this.game.gameParams.maxVal - MIN_VAL)) + MIN_VAL;
-        while (tileN == this.game.gameState.lastCleared || this.game.grid.size - this.game.gameState.activeCells < tileN) {
-            tileN = Math.round(Math.random() * (this.game.gameParams.maxVal - MIN_VAL)) + MIN_VAL;
+        // first, try to clear imbalances
+        var imbalances = this.game.tracker.tiles.map(function (v, i) {
+            return v != i && v != 0;
+        });
+        var tileN = [];
+        if (imbalances.some(function (b) {
+            return b;
+        })) {
+            for (var i = MIN_VAL; i < imbalances.length; i++) {
+                if (imbalances[i]) {
+                    tileN.push(i);
+                }
+            }
+        } else {
+            do {
+                tileN = [Math.round(Math.random() * (this.game.gameParams.maxVal - MIN_VAL)) + MIN_VAL];
+            } while(tileN[0] == this.game.gameState.lastCleared || this.game.grid.size - this.game.gameState.activeCells < tileN[0]);
         }
 
         return tileN;
@@ -954,48 +976,105 @@ var PuzzleRespawnSys = (function () {
 
     PuzzleRespawnSys.prototype.update = function (dt) {
         if (this.game.gameState.numMoves > this.movesTillNext) {
+            this.next = this.computeNext(); // this is the only time when this is important
             this.spawnNewTiles();
             this.movesAtLastSpawn = this.movesTillNext;
-            this.movesTillNext += 5;
+            this.movesTillNext += this.computeMovesTillNext();
         }
+    };
+
+    PuzzleRespawnSys.prototype.floodAcquire = function (start, tile) {
+        var cluster = [];
+        var marked = { get: null, set: null };
+        marked.get = function (key) {
+            return this[JSON.stringify(key)] === undefined ? false : this[JSON.stringify(key)];
+        };
+        marked.set = function (key) {
+            this[JSON.stringify(key)] = true;
+        };
+        var Q = [];
+        if (this.game.grid.get(new CartesianCoords(start.x, start.y)) != tile)
+            return [];
+        Q.push(start);
+        while (Q.length > 0) {
+            var n = Q.shift();
+            if (this.game.grid.get(n).value == tile.value && this.game.grid.get(n).type == tile.type && !marked.get(n)) {
+                var w = new CartesianCoords(n.x, n.y);
+                var e = new CartesianCoords(n.x, n.y);
+
+                while (this.game.grid.get(new CartesianCoords(w.x - 1, w.y)).value == tile.value && this.game.grid.get(new CartesianCoords(w.x - 1, w.y)).type == tile.type) {
+                    w.x--;
+                }
+
+                while (this.game.grid.get(new CartesianCoords(e.x + 1, e.y)).value == tile.value && this.game.grid.get(new CartesianCoords(e.x + 1, e.y)).type == tile.type) {
+                    e.x++;
+                }
+
+                for (var x = w.x; x < e.x + 1; x++) {
+                    var nn = new CartesianCoords(x, n.y);
+                    marked.set(nn);
+                    cluster.push(nn);
+                    var north = new CartesianCoords(nn.x, nn.y - 1);
+                    var south = new CartesianCoords(nn.x, nn.y + 1);
+                    if (this.game.grid.get(north).value == tile.value && this.game.grid.get(north).type == tile.type)
+                        Q.push(north);
+                    if (this.game.grid.get(south).value == tile.value && this.game.grid.get(south).type == tile.type)
+                        Q.push(south);
+                }
+            }
+        }
+        return cluster;
     };
 
     PuzzleRespawnSys.prototype.spawnNewTiles = function () {
         var _this = this;
-        var tilesToPlace = this.next;
         var tileIndices = [];
+        this.next.forEach(function (n) {
+            var tilesToPlace = n;
 
-        while (tilesToPlace > 0) {
-            var insertedPosition;
-            if (this.game.grid.size - this.game.gameState.activeCells < 10) {
-                var spacesLeft = this.game.grid.size - this.game.gameState.activeCells;
-                for (var i = 0; i < this.game.grid.size; i++) {
-                    if (this.game.grid.getFlat(i).type == 1 /* EMPTY */) {
-                        spacesLeft--;
-                        if (spacesLeft == 0) {
-                            this.game.grid.setFlat(i, new Tile(2 /* REGULAR */, this.next));
-                            insertedPosition = i;
-                        } else if (Math.random() > 0.5) {
-                            this.game.grid.setFlat(i, new Tile(2 /* REGULAR */, this.next));
-                            insertedPosition = i;
-                            break;
-                        }
-                    }
+            for (var i = 0; i < _this.game.grid.size; i++) {
+                if (_this.game.grid.getFlat(i).value == n) {
+                    tilesToPlace--;
                 }
-            } else {
-                var randomPlace = Math.round(Math.random() * this.game.grid.size);
-                while (this.game.grid.getFlat(randomPlace).type != 1 /* EMPTY */) {
-                    randomPlace = Math.round(Math.random() * this.game.grid.size);
-                }
-                this.game.grid.setFlat(randomPlace, new Tile(2 /* REGULAR */, this.next));
-                insertedPosition = randomPlace;
             }
 
-            tilesToPlace--;
-            this.game.gameState.activeCells++;
+            while (tilesToPlace > 0) {
+                var insertedPosition;
+                if (_this.game.grid.size - _this.game.gameState.activeCells < 10) {
+                    var spacesLeft = _this.game.grid.size - _this.game.gameState.activeCells;
+                    for (var i = 0; i < _this.game.grid.size; i++) {
+                        if (_this.game.grid.getFlat(i).type == 1 /* EMPTY */) {
+                            spacesLeft--;
+                            if (spacesLeft == 0) {
+                                _this.game.grid.setFlat(i, new Tile(2 /* REGULAR */, n));
+                                insertedPosition = i;
+                            } else if (Math.random() > 0.5) {
+                                _this.game.grid.setFlat(i, new Tile(2 /* REGULAR */, n));
+                                insertedPosition = i;
+                                break;
+                            }
+                        }
+                    }
+                } else {
+                    do {
+                        var randomPlace = Math.round(Math.random() * _this.game.grid.size);
+                        while (_this.game.grid.getFlat(randomPlace).type != 1 /* EMPTY */) {
+                            randomPlace = Math.round(Math.random() * _this.game.grid.size);
+                        }
+                        _this.game.grid.setFlat(randomPlace, new Tile(2 /* REGULAR */, n));
+                        insertedPosition = randomPlace;
+                        var t = _this.game.grid.getFlat(randomPlace);
+                        var canPop = _this.floodAcquire(new CartesianCoords(_this.game.grid.size % randomPlace, Math.floor(_this.game.grid.size / randomPlace)), t).length == t.value;
+                    } while(canPop);
+                }
 
-            tileIndices.push(insertedPosition);
-        }
+                tilesToPlace--;
+                _this.game.gameState.activeCells++;
+                _this.game.tracker.tiles[n]++;
+
+                tileIndices.push(insertedPosition);
+            }
+        });
 
         this.game.draw();
         this.game.extendUI();
@@ -1007,14 +1086,13 @@ var PuzzleRespawnSys = (function () {
                 _this.game.extendUI();
             });
         });
-
-        this.next = this.computeNext();
     };
     return PuzzleRespawnSys;
 })();
 /// <reference path="lib/chroma-js.d.ts" />
 /// <reference path="lib/hammerjs.d.ts" />
 /// <reference path="lib/svgjs.d.ts" />
+/// <reference path="lib/tsm-0.7.d.ts" />
 /// <reference path="lib/utils.ts" />
 /// <reference path="./game.ts" />
 /// <reference path="./puzzlerespawnsys.ts" />
@@ -1032,7 +1110,7 @@ var SquareGame = (function () {
         var _this = this;
         this.timeSinceLastUpdate = new Date().getTime();
         if (canvas == null) {
-            canvas = SVG('screen').size(600, 610);
+            canvas = SVG('screen').size(640, 650);
             console.log("no canvas supplied, starting with default canvas with dims " + canvas.width() + ", " + canvas.height());
         }
 
@@ -1040,15 +1118,15 @@ var SquareGame = (function () {
 
         var gp = {
             level: 1,
-            gridw: 6,
-            gridh: 6,
-            maxVal: 5,
+            gridw: 5,
+            gridh: 5,
+            maxVal: 6,
             gameType: gameType
         };
 
         if (gp.gameType == 0 /* SURVIVAL */) {
-            gp.gridw = 6;
-            gp.gridh = 6;
+            gp.gridw = 8;
+            gp.gridh = 8;
             gp.maxVal = 9;
         }
 
@@ -1177,9 +1255,22 @@ var SquareGame = (function () {
         this.gameParams = gp;
         this.gameState = gs;
 
-        this.grid = new Model.Square(this.gameParams.gridw, this.gameParams.gridh, new Tile(1 /* EMPTY */, 0), new Tile(0 /* OUT_OF_BOUNDS */, -1));
-        this.procGenGrid(this.grid, gp);
+        var tr = {
+            tiles: (function () {
+                var t = [];
+                for (var i = MIN_VAL; i < gp.maxVal; i++) {
+                    t[i] = 0;
+                }
+                return t;
+            })()
+        };
 
+        this.tracker = tr;
+
+        this.grid = new Model.Square(this.gameParams.gridw, this.gameParams.gridh, new Tile(1 /* EMPTY */, 0), new Tile(0 /* OUT_OF_BOUNDS */, -1));
+        this.procGenGrid(this.grid, gp, this.tracker);
+
+        this.canvas.clear();
         this.gridView = View.fromModel(this.grid);
         this.draw();
         this.extendUI();
@@ -1228,12 +1319,10 @@ var SquareGame = (function () {
 
         if (game.gameParams.gameType == 0 /* SURVIVAL */) {
             game.survivalMechanic.update(dt);
-            var color = game.gridView.colorizer.fromTile(new Tile(2 /* REGULAR */, game.survivalMechanic.next));
-            game.gridView.updateTimerBar(game.canvas, game.survivalMechanic.progressTillNextRespawn(), color);
+            game.gridView.updateTimerBar(game.canvas, game.survivalMechanic.progressTillNextRespawn(), null);
         } else {
             game.respawnSys.update(dt);
-            var color = game.gridView.colorizer.fromTile(new Tile(2 /* REGULAR */, game.respawnSys.next));
-            game.gridView.updateTimerBar(game.canvas, game.respawnSys.progressTillNextRespawn(), color);
+            game.gridView.updateTimerBar(game.canvas, game.respawnSys.progressTillNextRespawn(), null);
         }
     };
 
@@ -1241,7 +1330,7 @@ var SquareGame = (function () {
     // the grid must:
     // 1) have n of tiles labeled n.
     // 2) have enough empty spaces to be tractable (and fun)
-    SquareGame.prototype.procGenGrid = function (grid, gp) {
+    SquareGame.prototype.procGenGrid = function (grid, gp, tr) {
         if (gp.gameType == 0 /* SURVIVAL */) {
             // decide which tiles we're gonna generate to start this level
             var done = false;
@@ -1274,6 +1363,7 @@ var SquareGame = (function () {
                         added++;
                     }
                 }
+                tr.tiles[val] = val;
                 this.gameState.activeCells += val;
             }
 
@@ -1361,6 +1451,7 @@ var SquareGame = (function () {
             for (i = 2; i <= gp.maxVal; i++) {
                 if (count[i]) {
                     this.gameState.activeCells += count[i];
+                    tr.tiles[i] = count[i];
                 } else {
                     console.log("bad state:" + i + " is null");
                 }
@@ -1492,7 +1583,7 @@ var SquareGame = (function () {
                         var newnewset = displace(newset, delta_vec);
                         if (game.grid.get(newnewset[i]).type != 0 /* OUT_OF_BOUNDS */ && game.grid.get(newnewset[i]).value > game.grid.get(newset[i]).value) {
                             marked.set(newset[i]);
-                            game.crush(newset[i], function () {
+                            game.crush(newset[i], new TSM.vec2([delta_vec.x, delta_vec.y]), function () {
                                 game.justMove(oldset[i], direction, game);
                             });
                         } else {
@@ -1507,13 +1598,20 @@ var SquareGame = (function () {
         });
     };
 
-    SquareGame.prototype.crush = function (loc, postCallback) {
-        if (this.grid.get(loc).type == 2 /* REGULAR */) {
+    SquareGame.prototype.crush = function (loc, fromDir, postCallback) {
+        var startTile = this.grid.get(loc);
+        if (startTile.type == 2 /* REGULAR */) {
             this.grid.set(loc, new Tile(1 /* EMPTY */, -1));
             var c = this.gridView.getSVGElement(loc);
             var game = this;
-            c.animate(200, '>', 0).scale(0, 0).after(function () {
+
+            // TODO refactor this so game doesn't care about size
+            var cellh = this.canvas.width() / Math.sqrt(this.grid.size);
+            var horiz = Math.abs(fromDir.x) > 0;
+            var vert = !horiz;
+            c.animate(100, '<', 0).scale(horiz ? 0 : 1, vert ? 0 : 1).move(horiz ? c.cannonicalTransform.x + fromDir.x * cellh / 2 : c.cannonicalTransform.x, vert ? c.cannonicalTransform.y + fromDir.y * cellh / 2 : c.cannonicalTransform.y).after(function () {
                 game.gameState.activeCells--;
+                game.tracker.tiles[startTile.value]--;
                 console.log("CRUSH:" + game.gameState.activeCells);
                 game.gameState.lastCleared = game.grid.get(loc).value;
                 postCallback();
@@ -1582,7 +1680,6 @@ var SquareGame = (function () {
                     anim.after(function () {
                         anim.stop();
                         game.gameState.disableMouse = false;
-                        game.gameState.numMoves++;
                         game.prune(to[0], function () {
                             game.draw();
                             game.extendUI();
@@ -1633,7 +1730,7 @@ var SquareGame = (function () {
         };
 
         var oldset = game.gameState.selected.map(Utils.deepCopy);
-        var newset = oldset.map(Utils.deepCopy);
+        var newset = displace(oldset, delta_vec);
         var magnitude = 0;
         while (checkCollision(newset, oldset).every(function (col) {
             return col == false;
@@ -1646,8 +1743,9 @@ var SquareGame = (function () {
         var thresholdValue = game.grid.get(game.gameState.selected[0]).value;
 
         move(game.gameState.selected, oldset, function () {
-            if (magnitude <= 1)
+            if (magnitude < 1)
                 return;
+            game.gameState.numMoves++; // hidden property; hard to find, understand, and debug
 
             // for each check collision between newset and oldset, if true then
             // move that square to the new direction if it's smaller than selected[0]'s number
@@ -1657,7 +1755,7 @@ var SquareGame = (function () {
                         var newnewset = displace(newset, delta_vec);
                         if (game.grid.get(newnewset[i]).type != 0 /* OUT_OF_BOUNDS */ && game.grid.get(newnewset[i]).value > game.grid.get(newset[i]).value) {
                             marked.set(newset[i]);
-                            game.crush(newset[i], function () {
+                            game.crush(newset[i], new TSM.vec2([delta_vec.x, delta_vec.y]), function () {
                                 game.justMove(oldset[i], moveDirection, game);
                             });
                         } else {
@@ -1686,10 +1784,17 @@ var SquareGame = (function () {
         var gp = Utils.deepCopy(this.gameParams);
         gp.level++;
 
-        gp.gridw = Math.floor((gp.level + 4) * 1.2);
-        gp.gridh = Math.floor((gp.level + 4) * 1.2);
+        gp.gridw = [5, 8, 10, 16, 20].reduce(function (prev, cur, _, __) {
+            if (prev > gp.gridw)
+                return prev;
+            else if (cur > gp.gridw)
+                return cur;
+        });
+        gp.gridh = gp.gridw;
 
-        gp.maxVal = gp.level + 3;
+        gp.maxVal = Math.floor(Math.sqrt(gp.gridw * gp.gridh));
+        if (gp.maxVal > 9)
+            gp.maxVal = 9;
 
         this.gridView.updateTimerBar(null, null, null);
         this.init(gp);
@@ -1758,6 +1863,7 @@ var SquareGame = (function () {
                     c.animate(200, '>', 0).scale(0, 0).after(function () {
                         c.stop();
                         game.gameState.activeCells--;
+                        game.tracker.tiles[startTile.value]--;
                         console.log("PRUNE:" + game.gameState.activeCells);
                         if (i == startTile.value - 1) {
                             postCallback();
@@ -1783,7 +1889,7 @@ var init = function () {
     var doSurvival = Utils.getURLParameter("survival") == "true";
     var useHexGrid = Utils.getURLParameter("hex") == "true";
 
-    var canvas = SVG('screen').size(600, 610);
+    var canvas = SVG('screen').size(640, 650);
     var gameMode = doSurvival ? 0 /* SURVIVAL */ : 1 /* PUZZLE */;
 
     game = useHexGrid ? new HexGame(gameMode, canvas) : new SquareGame(gameMode, canvas);

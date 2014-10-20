@@ -2,7 +2,7 @@
 p, li { font-family: Lato, sans-serif; font-weight: 300; font-size: 16px; margin:0; padding:0; color:#000 }
 h1 { font-weight: 700;  }
 h2, h3, h4, h5, h6 { font-family: Sintony, sans-serif; font-weight: 400; color: #000 }
-body { background: #E1F5C4; margin: 0; font-size: 1em; line-height: 1.4; }
+body { margin: 0; font-size: 1em; line-height: 1.4; }
 ul { list-style-type: none }
 
 .vspace {
@@ -10,8 +10,9 @@ ul { list-style-type: none }
 }
 
 /* game */
-#screen { width:600px; height:610px; background: #fff; border-radius: 0 0 10px 10px; margin: 0 auto auto auto; }
+#screen { display: inline-block; width:640px; height:650px; background: #fff; border: 40px solid #ABE4FF; border-radius: 20px; margin: auto auto auto auto; }
 #timerbar { border-radius: 0 0 10px 10px; }
+#maincolumn { display: table-cell; width: 100vw; height: 100vh; vertical-align: middle; }
 text { cursor: default; }
 .guide text { font-size: 7pt; color:#000; margin: 0; padding: 0 }
 
