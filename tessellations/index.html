@@ -1,24 +1,33 @@
 <html>
     <head>
+        <link href='http://fonts.googleapis.com/css?family=Sintony' rel='stylesheet' type='text/css'>
         <link rel="stylesheet" href="style.css">
-        <script src="./lib/utils.js" type="text/javascript"></script>
-        <script src="./lib/svg.js" type="text/javascript"></script>
-        <script src="./lib/chroma.js" type="text/javascript"></script>
-        <script src="./lib/hammer.js" type="text/javascript"></script>
-        <script src="./lib/tsm-0.7.js" type="text/javascript"></script>
+        <script src="./lib/persist-min.js" type="text/javascript"></script>
         <script src="./game.js" type="text/javascript"></script>
         <title>Tessellation Prototype</title>
     </head>
-    <body>
+    <body onload="branch()">
     <div role="main" id="maincolumn">
-      <center>
-        <div id="screen">
+        <div id="splash">
+            <h1>HELLO, FRIEND!</h1>
+            <p>
+                Thanks for taking your time to play an early prototype build of project tessellation!
+                Your feedback is super important to the continued development of this little game.
+                Though the game is pretty simple, there is no tutorial, so you might find it useful
+                to know:
+            </p>
+            <ol>
+                <li>You only need your mouse (or finger, if you're using a tablet).
+                <li>Be mindful of how numbered blocks interact.
+                <li>Clear the grid!
+            </ol>
+            <p>
+                Cheers,<br/>
+                David
+            </p>
+            <br/>
+            <button class="btn btn-cta" onClick="gotoGame()">Shut up and let me play!</div>
         </div>
-        <script type="text/javascript">
-            init();
-        </script>
-        <br class="vspace" />
-        </center>
       </div>
     </body>
 </html>

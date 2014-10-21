@@ -1120,7 +1120,7 @@ var SquareGame = (function () {
             level: 1,
             gridw: 5,
             gridh: 5,
-            maxVal: 6,
+            maxVal: 5,
             gameType: gameType
         };
 
@@ -1784,10 +1784,12 @@ var SquareGame = (function () {
         var gp = Utils.deepCopy(this.gameParams);
         gp.level++;
 
-        gp.gridw = [5, 8, 10, 16, 20].reduce(function (prev, cur, _, __) {
+        gp.gridw = [5, 8, 10].reduce(function (prev, cur, i, array) {
             if (prev > gp.gridw)
                 return prev;
             else if (cur > gp.gridw)
+                return cur;
+            else if (i == array.length - 1)
                 return cur;
         });
         gp.gridh = gp.gridw;
@@ -1884,6 +1886,20 @@ var SquareGame = (function () {
 /// <reference path="./squaregame.ts" />
 /// <reference path="lib/utils.ts" />
 var game;
+
+var branch = function () {
+    if (document.cookie.match(/^(.*;)?tess_prototype_seen_splash=[^;]+(.*)?$/)) {
+        location.href = "play.html";
+    }
+};
+
+var gotoGame = function () {
+    var expires = new Date();
+    expires.setFullYear(expires.getFullYear() + 1);
+    var cookie = "tess_prototype_seen_splash=true; path=/tessellations/; expires=" + expires.toUTCString();
+    document.cookie = cookie;
+    location.href = "play.html";
+};
 
 var init = function () {
     var doSurvival = Utils.getURLParameter("survival") == "true";
