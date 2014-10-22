@@ -136,6 +136,7 @@ var Model;
 })(Model || (Model = {}));
 /// <reference path="lib/chroma-js.d.ts" />
 /// <reference path="lib/svgjs.d.ts" />
+/// <reference path="lib/tsm-0.7.d.ts" />
 /// <reference path="./model.ts" />
 
 var Colorizer = (function () {
@@ -145,6 +146,13 @@ var Colorizer = (function () {
                 return this.scale[t.type](t.value / 9).hex();
             } else {
                 return this.scale[t.type](t.value / 9).brighter().hex();
+            }
+        };
+        this.shadowFromTile = function (t) {
+            if (t.type == 1 /* EMPTY */) {
+                return this.scale[t.type](t.value / 9).hex();
+            } else {
+                return this.scale[t.type](t.value / 9).darken(10).hex();
             }
         };
         this.foregroundFromColor = function (c) {
@@ -189,13 +197,13 @@ var View;
             this.model = square;
             this.colorizer = new Colorizer();
         }
-        SquareView.prototype.drawTile = function (canvas, x, y, e) {
+        SquareView.prototype.drawTile = function (canvas, x, y, e, dragOffset) {
             var cellw = canvas.width() / this.model.gridw, cellh = canvas.width() / this.model.gridh;
 
             var xOffset = cellw / 2;
             var yOffset = cellh / 2;
 
-            var cell = canvas.group().transform({ x: x * cellw + xOffset, y: y * cellh + yOffset });
+            var cell = canvas.group().transform({ x: x * cellw + xOffset + dragOffset.x, y: y * cellh + yOffset + dragOffset.y });
 
             var pts = [new Vec2(-cellw / 2, -cellh / 2), new Vec2(cellw / 2, -cellh / 2), new Vec2(cellw / 2, cellh / 2), new Vec2(-cellw / 2, cellh / 2)];
             var ptstr = pts.reduce(function (p1, p2, i, v) {
@@ -207,6 +215,19 @@ var View;
             rect.attr({
                 'fill': this.colorizer.fromTile(e),
                 'fill-opacity': e.type == 1 /* EMPTY */ ? 0 : 1 });
+
+            if (e.type != 1 /* EMPTY */) {
+                var shadowpts = [new Vec2(-cellw / 2, cellh / 2), new Vec2(cellw / 2, cellh / 2), new Vec2(cellw / 2, cellh / 2 + cellh / 6), new Vec2(-cellw / 2, cellh / 2 + cellh / 6)];
+                var shadowptstr = shadowpts.reduce(function (p1, p2, i, v) {
+                    return p1.toString() + " " + p2.toString();
+                }, "");
+
+                var shadow = cell.polygon(shadowptstr);
+
+                shadow.attr({
+                    'fill': this.colorizer.shadowFromTile(e),
+                    'fill-opacity': 1 });
+            }
 
             var text = cell.plain(e.type != 1 /* EMPTY */ ? e.value.toString() : "");
 
@@ -220,6 +241,7 @@ var View;
             cell.text = text;
             cell.e = e;
             cell.cannonicalTransform = { x: cell.transform('x'), y: cell.transform('y') };
+            cell.dragOffset = dragOffset;
 
             return cell;
         };
@@ -252,12 +274,12 @@ var View;
             for (var y = 0; y < this.model.gridh; y++) {
                 for (var x = 0; x < this.model.gridw; x++) {
                     var e = this.model.get(new CartesianCoords(x, y));
-                    if (forceReset || this.cells[this.model.toFlat(x, y)] == null || this.cells[this.model.toFlat(x, y)].e != e) {
-                        if (forceReset || this.cells[this.model.toFlat(x, y)] != null) {
-                            this.cells[this.model.toFlat(x, y)].clear();
-                        }
-                        this.cells[this.model.toFlat(x, y)] = this.drawTile(canvas, x, y, e);
+                    var offs = new TSM.vec2([0, 0]);
+                    if (this.cells[this.model.toFlat(x, y)] != null) {
+                        offs = this.cells[this.model.toFlat(x, y)].dragOffset;
+                        this.cells[this.model.toFlat(x, y)].clear();
                     }
+                    this.cells[this.model.toFlat(x, y)] = this.drawTile(canvas, x, y, e, offs);
                 }
             }
         };
@@ -1239,12 +1261,16 @@ var SquareGame = (function () {
                         game.gameState.selected.forEach(function (coord) {
                             var c = game.gridView.getSVGElement(coord);
                             c.animate(100, '>', 0).move(c.cannonicalTransform.x + dragOffset.x, c.cannonicalTransform.y + dragOffset.y);
+                            c.dragOffset.x = dragOffset.x;
+                            c.dragOffset.y = dragOffset.y;
                         });
                     }
                 } else {
                     game.gameState.selected.forEach(function (coord) {
                         var c = game.gridView.getSVGElement(coord);
                         c.animate(100, '>', 0).move(c.cannonicalTransform.x, c.cannonicalTransform.y);
+                        c.dragOffset.x = 0;
+                        c.dragOffset.y = 0;
                     });
                 }
             });
@@ -1683,6 +1709,8 @@ var SquareGame = (function () {
                 var f = game.gridView.getSVGElement(fromElement);
                 var t = game.gridView.getSVGElement(to[i]);
 
+                f.dragOffset.x = 0;
+                f.dragOffset.y = 0;
                 var anim = f.animate(100, '>', 0).move(t.transform('x'), t.transform('y'));
 
                 if (i == 0) {
