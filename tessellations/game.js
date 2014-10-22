@@ -974,12 +974,21 @@ var PuzzleRespawnSys = (function () {
         return tileN;
     };
 
+    PuzzleRespawnSys.prototype.gameIsStuck = function () {
+        return !this.game.tracker.tiles.some(function (n, i) {
+            return n >= i;
+        });
+    };
+
     PuzzleRespawnSys.prototype.update = function (dt) {
         if (this.game.gameState.numMoves > this.movesTillNext) {
             this.next = this.computeNext(); // this is the only time when this is important
             this.spawnNewTiles();
             this.movesAtLastSpawn = this.movesTillNext;
             this.movesTillNext += this.computeMovesTillNext();
+        } else if (this.gameIsStuck()) {
+            this.next = this.computeNext(); // this is the only time when this is important
+            this.spawnNewTiles();
         }
     };
 
