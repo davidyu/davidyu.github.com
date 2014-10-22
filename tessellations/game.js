@@ -217,7 +217,7 @@ var View;
                 'fill-opacity': e.type == 1 /* EMPTY */ ? 0 : 1 });
 
             if (e.type != 1 /* EMPTY */) {
-                var shadowpts = [new Vec2(-cellw / 2, cellh / 2), new Vec2(cellw / 2, cellh / 2), new Vec2(cellw / 2, cellh / 2 + cellh / 6), new Vec2(-cellw / 2, cellh / 2 + cellh / 6)];
+                var shadowpts = [new Vec2(-cellw / 2, cellh / 2), new Vec2(cellw / 2, cellh / 2), new Vec2(cellw / 2, cellh / 2 + 10), new Vec2(-cellw / 2, cellh / 2 + 10)];
                 var shadowptstr = shadowpts.reduce(function (p1, p2, i, v) {
                     return p1.toString() + " " + p2.toString();
                 }, "");
