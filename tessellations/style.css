@@ -11,6 +11,7 @@ ul { list-style-type: none }
 
 /* game */
 #screen { display: inline-block; width:640px; height:650px; background: #fff; border: 40px solid #ABE4FF; border-radius: 20px; margin: auto auto auto auto; }
+#screen-canvas { width:640px; height:650px; }
 #timerbar { border-radius: 0 0 10px 10px; }
 #maincolumn { display: table-cell; width: 100vw; height: 100vh; vertical-align: middle; }
 #splash { width: 600; margin: auto; }
