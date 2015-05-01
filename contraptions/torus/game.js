@@ -1659,16 +1659,16 @@ var SquareGame = (function () {
             var cellSize = this.view.getCellSize();
             switch (moveDirection) {
                 case 0 /* NORTH */:
-                    wrapCount = -Math.floor(this.gameState.dragDelta.y / cellSize.h);
+                    wrapCount = -Math.round(this.gameState.dragDelta.y / cellSize.h);
                     break;
                 case 1 /* EAST */:
-                    wrapCount = Math.ceil(this.gameState.dragDelta.x / cellSize.w);
+                    wrapCount = Math.round(this.gameState.dragDelta.x / cellSize.w);
                     break;
                 case 2 /* SOUTH */:
-                    wrapCount = Math.ceil(this.gameState.dragDelta.y / cellSize.h);
+                    wrapCount = Math.round(this.gameState.dragDelta.y / cellSize.h);
                     break;
                 case 3 /* WEST */:
-                    wrapCount = -Math.floor(this.gameState.dragDelta.x / cellSize.w);
+                    wrapCount = -Math.round(this.gameState.dragDelta.x / cellSize.w);
                     break;
             }
             this.justMove(this.gameState.selected, moveDirection, wrapCount);
