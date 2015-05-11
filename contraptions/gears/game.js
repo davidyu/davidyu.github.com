@@ -742,13 +742,20 @@ var AxialCoords = (function () {
             }
         }
     };
-    AxialCoords.prototype.rotate = function (direction) {
+    AxialCoords.prototype.negate = function () {
+        return new AxialCoords(-this.q, -this.r);
+    };
+    AxialCoords.prototype.rotate = function (direction, center) {
+        if (center === void 0) { center = new AxialCoords(0, 0); }
+        var rel = this.displace(center.negate());
         switch (direction) {
             case 0 /* LEFT */:
-                return new AxialCoords(-this.r, this.r + this.q);
+                var rotated = new AxialCoords(-rel.r, rel.r + rel.q);
+                return rotated.displace(center);
                 break;
             case 1 /* RIGHT */:
-                return new AxialCoords(this.r + this.q, -this.q);
+                var rotated = new AxialCoords(rel.r + rel.q, -rel.q);
+                return rotated.displace(center);
                 break;
         }
     };
@@ -820,27 +827,40 @@ var Model;
                 return this.get(arg).type == 1 /* EMPTY */;
             }
         };
-        Hex.prototype.rotate = function (direction) {
+        Hex.prototype.rotate = function (direction, center, radius) {
+            if (center === void 0) { center = new AxialCoords(0, 0); }
+            if (radius === void 0) { radius = this.gridr; }
+            console.log("rotate model - r:" + radius + "\ncenter" + center);
             var counter = direction == 0 /* LEFT */ ? 1 /* RIGHT */ : 0 /* LEFT */;
-            for (var i = 1; i < this.gridr; i++) {
+            for (var i = 1; i <= radius; i++) {
                 for (var j = 0; j < i; j++) {
-                    var startCoords = this.center().displace(5 /* NW */, i).displace(1 /* E */, j);
+                    var startCoords = center.displace(5 /* NW */, i).displace(1 /* E */, j);
                     var startTile = this.get(startCoords);
                     var iterations = 0;
                     var coords = Utils.deepCopy(startCoords);
                     while (iterations < 5) {
-                        var prev = coords.rotate(counter);
+                        var prev = coords.rotate(counter, center);
                         this.set(coords, this.get(prev));
                         iterations++;
-                        coords = coords.rotate(counter);
+                        coords = coords.rotate(counter, center);
                     }
                     this.set(coords, startTile);
                 }
             }
-            this.signals.rotated.dispatch(direction);
+            this.signals.rotated.dispatch(direction, center, radius);
         };
         Hex.prototype.center = function () {
             return new AxialCoords(0, 0);
+        };
+        Hex.prototype.getRadialGroup = function (center, radius) {
+            var group = [];
+            for (var r = -radius; r <= radius; r++) {
+                for (var q = Math.max(-radius, -r - radius); q <= Math.min(radius, -r + radius); q++) {
+                    var coords = center.displace(new AxialCoords(q, r));
+                    group.push(coords);
+                }
+            }
+            return group;
         };
         Hex.prototype.floodAcquire = function (start) {
             var cluster = [];
@@ -894,17 +914,13 @@ var Model;
         Hex.prototype.computeDistance = function (a, b) {
             return (Math.abs(a.q - b.q) + Math.abs(a.q + a.r - b.q - b.r) + Math.abs(a.r - b.r)) / 2;
         };
-        Hex.prototype.procGenGrid = function (min, max, radius) {
-            var origin = new AxialCoords(0, 0);
-            for (var r = -radius; r <= radius; r++) {
-                for (var q = -radius; q <= radius; q++) {
-                    if (Math.abs(r + q) <= radius) {
-                        var coords = new AxialCoords(q, r);
-                        var val = Math.round(Math.random() * (max - min) + min);
-                        this.set(coords, new Tile(2 /* REGULAR */, val));
-                    }
-                }
-            }
+        Hex.prototype.procGenGrid = function (center, min, max, radius) {
+            var _this = this;
+            var coords = this.getRadialGroup(center, radius);
+            coords.forEach(function (c) {
+                var val = Math.round(Math.random() * (max - min) + min);
+                _this.set(c, new Tile(2 /* REGULAR */, val));
+            });
         };
         Hex.prototype.debugPrint = function (plain) {
             if (plain === void 0) { plain = false; }
@@ -1659,13 +1675,20 @@ var View;
                 this.cells[this.model.toFlat(c.q, c.r)] = e;
             }
         };
-        HexView.prototype.rotate = function (canvas, direction, doneCallback) {
+        HexView.prototype.rotate = function (canvas, direction, center, radius, doneCallback) {
             var _this = this;
             var target = canvas.group();
+            var rotateGroup = this.model.getRadialGroup(center, radius);
             target.animate(150, '>', 0).during(function (t) {
                 var sign = direction == 0 /* LEFT */ ? 1 : -1;
                 var deg = sign * 60 * SVG.easing.cubicOut(t);
-                _this.topGroup.rotate(deg);
+                var anchor = _this.getViewElement(center);
+                rotateGroup.forEach(function (c) {
+                    var e = _this.getViewElement(c);
+                    var cx = anchor.cx();
+                    var cy = anchor.cy();
+                    e.rotate(deg, cx, cy);
+                });
             }).after(function () {
                 _this.resetView(canvas);
                 _this.signals.animationFinished.dispatch();
@@ -1730,20 +1753,21 @@ var HexGame = (function () {
         this.params = gp;
         this.drawBackend = gp.drawBackend;
         this.canvas = View.buildCanvas(gp.drawBackend);
-        this.model = new Model.Hex(5, new Tile(1 /* EMPTY */, 0), new Tile(0 /* OUT_OF_BOUNDS */, -1));
+        this.model = new Model.Hex(10, new Tile(1 /* EMPTY */, 0), new Tile(0 /* OUT_OF_BOUNDS */, -1));
         this.view = new View.HexView(this.model, gp.drawBackend, this.canvas, null);
         this.inputQ = [];
         this.maxInputQSlots = 5;
+        this.pivots = [];
     }
     HexGame.prototype.connectSignals = function (model, view) {
         var _this = this;
-        model.signals.rotated.add(function (direction) {
-            _this.view.queueAnimation([new AnimationData(6 /* ROTATE */, [_this.canvas, direction])]);
+        model.signals.rotated.add(function (direction, center, radius) {
+            _this.view.queueAnimation([new AnimationData(6 /* ROTATE */, [_this.canvas, direction, center, radius])]);
         }, this.view);
         view.signals.allFinished.add(function () {
             if (_this.inputQ.length > 0) {
-                var dir = _this.inputQ.shift();
-                _this.model.rotate(dir);
+                var cmd = _this.inputQ.shift();
+                _this.model.rotate(cmd.rotDir, cmd.center, cmd.radius);
             }
             else {
                 _this.updateViewAndController();
@@ -1751,30 +1775,41 @@ var HexGame = (function () {
         }, this.view);
     };
     HexGame.prototype.init = function () {
-        var _this = this;
         if (this.params.level == null) {
-            this.model.procGenGrid(1, 4, 3);
+            for (var i = 0; i < 5; i++) {
+                var center;
+                if (i % 2 == 0) {
+                    center = new AxialCoords(i * 2 - 5, 0);
+                }
+                else {
+                    center = new AxialCoords(i * 2 - 5, -1);
+                }
+                this.model.procGenGrid(center, 1, 4, 1);
+                this.pivots.push(center);
+            }
         }
         View.resetCanvas(this.canvas, this.drawBackend);
         this.updateViewAndController();
-        Events.bind(document, 'keystroke.left', function (e) { return _this.rotateLeft(e); });
-        Events.bind(document, 'keystroke.right', function (e) { return _this.rotateRight(e); });
         this.connectSignals(this.model, this.view);
     };
-    HexGame.prototype.rotateLeft = function (e) {
+    HexGame.prototype.rotateLeft = function (center, radius) {
+        if (center === void 0) { center = new AxialCoords(0, 0); }
+        if (radius === void 0) { radius = this.model.gridr; }
         if (!this.view.animating) {
-            this.model.rotate(0 /* LEFT */);
+            this.model.rotate(0 /* LEFT */, center, radius);
         }
         else if (this.inputQ.length < this.maxInputQSlots) {
-            this.inputQ.push(0 /* LEFT */);
+            this.inputQ.push({ rotDir: 0 /* LEFT */, center: center, radius: radius });
         }
     };
-    HexGame.prototype.rotateRight = function (e) {
+    HexGame.prototype.rotateRight = function (center, radius) {
+        if (center === void 0) { center = new AxialCoords(0, 0); }
+        if (radius === void 0) { radius = this.model.gridr; }
         if (!this.view.animating) {
-            this.model.rotate(1 /* RIGHT */);
+            this.model.rotate(1 /* RIGHT */, center, radius);
         }
         else if (this.inputQ.length < this.maxInputQSlots) {
-            this.inputQ.push(1 /* RIGHT */);
+            this.inputQ.push({ rotDir: 1 /* RIGHT */, center: center, radius: radius });
         }
     };
     HexGame.prototype.restart = function () {
@@ -1789,11 +1824,10 @@ var HexGame = (function () {
     };
     HexGame.prototype.extendUIFromView = function () {
         var _this = this;
-        var pivots = [new AxialCoords(0, 0)];
-        pivots.forEach(function (p) {
+        this.pivots.forEach(function (p) {
             var elem = _this.view.getViewElement(p);
             elem.click(function () {
-                _this.rotateLeft(null);
+                _this.rotateLeft(p, 1);
             });
         });
     };
