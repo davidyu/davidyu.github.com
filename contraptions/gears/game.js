@@ -1753,7 +1753,7 @@ var HexGame = (function () {
         this.params = gp;
         this.drawBackend = gp.drawBackend;
         this.canvas = View.buildCanvas(gp.drawBackend);
-        this.model = new Model.Hex(10, new Tile(1 /* EMPTY */, 0), new Tile(0 /* OUT_OF_BOUNDS */, -1));
+        this.model = new Model.Hex(9, new Tile(1 /* EMPTY */, 0), new Tile(0 /* OUT_OF_BOUNDS */, -1));
         this.view = new View.HexView(this.model, gp.drawBackend, this.canvas, null);
         this.inputQ = [];
         this.maxInputQSlots = 5;
@@ -1779,10 +1779,10 @@ var HexGame = (function () {
             for (var i = 0; i < 5; i++) {
                 var center;
                 if (i % 2 == 0) {
-                    center = new AxialCoords(i * 2 - 5, 0);
+                    center = new AxialCoords(Math.floor(i / 2) * 3 - 5, 0);
                 }
                 else {
-                    center = new AxialCoords(i * 2 - 5, -1);
+                    center = new AxialCoords(Math.floor(i / 2) * 3 - 5 + 2, -1);
                 }
                 this.model.procGenGrid(center, 1, 4, 1);
                 this.pivots.push(center);
