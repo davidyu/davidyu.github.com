@@ -148,8 +148,7 @@ var TileType;
     TileType[TileType["OUT_OF_BOUNDS"] = 0] = "OUT_OF_BOUNDS";
     TileType[TileType["EMPTY"] = 1] = "EMPTY";
     TileType[TileType["REGULAR"] = 2] = "REGULAR";
-    TileType[TileType["CONCRETE"] = 3] = "CONCRETE";
-    TileType[TileType["LAVA"] = 4] = "LAVA";
+    TileType[TileType["CONTROL"] = 3] = "CONTROL";
 })(TileType || (TileType = {}));
 ;
 var CardinalDirection;
@@ -223,6 +222,9 @@ var Tile = (function () {
     };
     Tile.prototype.isTangible = function () {
         return this.type != 1 /* EMPTY */;
+    };
+    Tile.prototype.setType = function (t) {
+        this.type = t;
     };
     return Tile;
 })();
@@ -1026,7 +1028,7 @@ var Colorizer = (function () {
         this.scale = {};
         this.scale[1 /* EMPTY */] = chroma.scale(['#FFF', '#FFBDD8', '#B5D8EB', '#FFC8BA']);
         this.scale[2 /* REGULAR */] = chroma.scale(['#CCC', 'FFABAB', '#FBCA04', '#1DE5A2', '#3692B9', '#615258', '#EB6420', '#C8FF00', '#46727F', '#1D1163']);
-        this.scale[4 /* LAVA */] = chroma.scale(['#AE5750', '#F96541', '#FF7939']);
+        this.scale[3 /* CONTROL */] = chroma.scale(['#000', '#000']);
     }
     Colorizer.prototype.fromTile = function (t) {
         if (t.type == 1 /* EMPTY */) {
@@ -1074,13 +1076,21 @@ var View;
         return new SquareView(grid, backend, canvas, gameSignals);
     }
     View.build = build;
-    function computePlayableRect() {
+    function computePlayableRect(square) {
+        if (square === void 0) { square = false; }
         var browserViewportDims = Utils.getViewport();
         var screenDim = new TSM.vec2(browserViewportDims);
-        var small = Math.min.apply(Math, browserViewportDims);
-        var playableDim = new TSM.vec2([small, small]);
-        var centerOffset = screenDim.subtract(playableDim).scale(0.5);
-        return new Rect(centerOffset.x, centerOffset.y, playableDim.x, playableDim.y);
+        if (square) {
+            var small = Math.min.apply(Math, browserViewportDims);
+            var playableDim = new TSM.vec2([small, small]);
+            var centerOffset = screenDim.subtract(playableDim).scale(0.5);
+            return new Rect(centerOffset.x, centerOffset.y, playableDim.x, playableDim.y);
+        }
+        else {
+            var playableDim = new TSM.vec2(browserViewportDims);
+            var centerOffset = screenDim.subtract(playableDim).scale(0.5);
+            return new Rect(centerOffset.x, centerOffset.y, playableDim.x, playableDim.y);
+        }
     }
     View.computePlayableRect = computePlayableRect;
     var SquareView = (function () {
@@ -1563,11 +1573,11 @@ var View;
             this.model = hex;
             this.animQ = [];
             this.animating = false;
-            this.cellSz = this.computeCellSize(View.computePlayableRect());
+            this.cellSz = this.computeCellSize(View.computePlayableRect(true));
             this.colorizer = new Colorizer();
             this.concurrentAnimations = 0;
             this.drawBackend = backend;
-            this.playableRect = View.computePlayableRect();
+            this.playableRect = View.computePlayableRect(true);
             this.signals = {
                 animationFinished: new signals.Signal(),
                 allFinished: new signals.Signal()
@@ -1575,6 +1585,12 @@ var View;
             this.signals.animationFinished.add(this.animationFinished, this);
             this.debugVisualizations = false;
         }
+        HexView.prototype.resizeCanvas = function (canvas) {
+            var vp = new TSM.vec2(Utils.getViewport());
+            canvas.size(vp.x, vp.y);
+            this.playableRect = View.computePlayableRect(true);
+            this.cellSz = this.computeCellSize(this.playableRect);
+        };
         HexView.prototype.getCellSize = function () {
             return this.cellSz;
         };
@@ -1647,6 +1663,7 @@ var View;
             this.cells = [];
             canvas.clear();
             this.topGroup = canvas.group();
+            this.topGroup.translate(this.playableRect.x, this.playableRect.y);
             for (var r = -this.model.gridr; r <= this.model.gridr; r++) {
                 for (var q = -this.model.gridr; q <= this.model.gridr; q++) {
                     var e = this.model.get(new AxialCoords(q, r));
@@ -1658,7 +1675,7 @@ var View;
             for (var r = -this.model.gridr; r <= this.model.gridr; r++) {
                 for (var q = -this.model.gridr; q <= this.model.gridr; q++) {
                     var e = this.model.get(new AxialCoords(q, r));
-                    if (e.type == 2 /* REGULAR */) {
+                    if (e.type == 2 /* REGULAR */ || e.type == 3 /* CONTROL */) {
                         this.cells[this.model.toFlat(q, r)] = this.drawTile(this.topGroup, q, r, e);
                     }
                 }
@@ -1753,7 +1770,7 @@ var HexGame = (function () {
         this.params = gp;
         this.drawBackend = gp.drawBackend;
         this.canvas = View.buildCanvas(gp.drawBackend);
-        this.model = new Model.Hex(9, new Tile(1 /* EMPTY */, 0), new Tile(0 /* OUT_OF_BOUNDS */, -1));
+        this.model = new Model.Hex(6, new Tile(1 /* EMPTY */, 0), new Tile(0 /* OUT_OF_BOUNDS */, -1));
         this.view = new View.HexView(this.model, gp.drawBackend, this.canvas, null);
         this.inputQ = [];
         this.maxInputQSlots = 5;
@@ -1775,6 +1792,7 @@ var HexGame = (function () {
         }, this.view);
     };
     HexGame.prototype.init = function () {
+        var _this = this;
         if (this.params.level == null) {
             for (var i = 0; i < 5; i++) {
                 var center;
@@ -1786,11 +1804,18 @@ var HexGame = (function () {
                 }
                 this.model.procGenGrid(center, 1, 4, 1);
                 this.pivots.push(center);
+                this.model.get(center).setType(3 /* CONTROL */);
             }
         }
         View.resetCanvas(this.canvas, this.drawBackend);
         this.updateViewAndController();
         this.connectSignals(this.model, this.view);
+        Events.unbind(window, "resize");
+        Events.bind(window, "resize", function () {
+            console.log("resizing...");
+            _this.view.resizeCanvas(_this.canvas);
+            _this.updateViewAndController();
+        });
     };
     HexGame.prototype.rotateLeft = function (center, radius) {
         if (center === void 0) { center = new AxialCoords(0, 0); }
