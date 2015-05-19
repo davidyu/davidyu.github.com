@@ -563,11 +563,27 @@ var Model;
             }
         };
         Square.prototype.procGenGrid = function (min, max) {
+            var maxCount = 4;
+            var candidates = [];
+            for (var i = min; i <= max; i++) {
+                candidates.push(i);
+            }
+            var counter = [];
+            counter = candidates.map(function (_) {
+                return maxCount;
+            });
             for (var y = 0; y < this.gridh; y++) {
                 for (var x = 0; x < this.gridw; x++) {
                     var coords = new CartesianCoords(x, y);
-                    var val = Math.round(Math.random() * (max - min) + min);
-                    this.set(coords, new Tile(2 /* REGULAR */, val));
+                    var index = Math.floor(Math.random() * candidates.length);
+                    if (index == candidates.length)
+                        index = candidates.length - 1;
+                    this.set(coords, new Tile(2 /* REGULAR */, candidates[index]));
+                    counter[index]--;
+                    if (counter[index] == 0) {
+                        candidates.splice(index, 1);
+                        counter.splice(index, 1);
+                    }
                 }
             }
         };
@@ -1429,53 +1445,6 @@ var SquareGame = (function () {
     };
     SquareGame.prototype.procGenGrid = function (grid, gp, tr) {
         if (gp.gameType == 0 /* SURVIVAL */) {
-            var done = false;
-            var acc = 0;
-            var toGenerate = [];
-            while (!done) {
-                var val = Math.round(Math.random() * (gp.level.maxVal - MIN_VAL) + MIN_VAL);
-                while (toGenerate.some(function (v) {
-                    return v == val;
-                })) {
-                    val = Math.round(Math.random() * (gp.level.maxVal - MIN_VAL) + MIN_VAL);
-                }
-                if (acc + val < grid.size - 2 * gp.level.gridw) {
-                    toGenerate.push(val);
-                    acc += val;
-                }
-                else {
-                    done = true;
-                }
-            }
-            while (toGenerate.length > 0) {
-                var val = toGenerate.pop();
-                var added = 0;
-                while (added < val) {
-                    var randIndex = Math.round(Math.random() * (grid.size - 1));
-                    if (grid.isEmpty(randIndex)) {
-                        grid.setFlat(randIndex, new Tile(2 /* REGULAR */, val));
-                        added++;
-                    }
-                }
-                tr.tiles[val] = val;
-            }
-            for (var y = 0; y < grid.gridh; y++) {
-                for (var x = 0; x < grid.gridw; x++) {
-                    var coords = new CartesianCoords(x, y);
-                    var t = grid.get(coords);
-                    if (this.model.floodAcquire(coords).length == t.value) {
-                        do {
-                            grid.set(coords, new Tile(1 /* EMPTY */, -1));
-                            var newCoords = new CartesianCoords(Math.round(Math.random() * grid.gridw), Math.round(Math.random() * grid.gridh));
-                            while (grid.get(newCoords).isTangible()) {
-                                newCoords = new CartesianCoords(Math.round(Math.random() * grid.gridw), Math.round(Math.random() * grid.gridh));
-                            }
-                            grid.set(newCoords, t);
-                            var canPop = this.model.floodAcquire(newCoords).length == t.value;
-                        } while (canPop);
-                    }
-                }
-            }
         }
         else {
             this.model.procGenGrid(MIN_VAL, gp.level.maxVal);
@@ -2053,11 +2022,11 @@ var ModeSelect = (function () {
             level: {
                 no: 0,
                 next: 0,
-                maxVal: 9,
+                maxVal: 5,
                 maxGridw: 10,
                 maxGridh: 10,
-                gridw: 5,
-                gridh: 5,
+                gridw: 4,
+                gridh: 4,
                 layout: null,
                 respawnInterval: 5
             },
