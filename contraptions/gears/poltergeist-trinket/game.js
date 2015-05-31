@@ -202,20 +202,10 @@ var CartesianCoords = (function () {
     };
     return CartesianCoords;
 })();
-var CartesianBounds = (function () {
-    function CartesianBounds(n, e, s, w) {
-        this.n = n != undefined ? n : -1;
-        this.e = e != undefined ? e : -1;
-        this.s = s != undefined ? s : -1;
-        this.w = w != undefined ? s : -1;
-    }
-    return CartesianBounds;
-})();
 var Tile = (function () {
     function Tile(t, v) {
         this.type = t;
         this.value = v;
-        this.bounds = new CartesianBounds();
     }
     Tile.prototype.toString = function () {
         return this.value.toString();
@@ -279,7 +269,6 @@ var Model;
                     tiles.reverse();
             }
             this.grid = tiles;
-            this.recomputeAllBounds();
         };
         Square.prototype.toFlat = function (x, y) {
             return x + y * this.gridw;
@@ -355,56 +344,6 @@ var Model;
             return cluster;
         };
         Square.prototype.move = function (target, direction) {
-            var _this = this;
-            console.log("moving " + target);
-            var from = this.floodAcquire(target);
-            var to = from.map(function (c) {
-                return _this.getTileBoundInDirection(c, direction);
-            });
-            var fromTiles = from.map(function (f) {
-                return _this.get(f);
-            });
-            console.log("before move:");
-            console.log(this.debugPrint());
-            to.forEach(function (t, i) {
-                if (!to.some(function (h) {
-                    return h.equals(from[i]);
-                })) {
-                    _this.set(from[i], new Tile(1 /* EMPTY */, -1));
-                }
-                _this.set(t, new Tile(fromTiles[i].type, fromTiles[i].value));
-            });
-            this.modelSignals.moved.dispatch(from, to);
-            console.log("after move:");
-            console.log(this.debugPrint());
-            var skipPrune = false;
-            {
-                var patty = to.map(function (c) {
-                    return c.displace(direction);
-                });
-                var bun = patty.map(function (c) {
-                    return c.displace(direction);
-                });
-                this.checkCollision(from, patty).forEach(function (col, i) {
-                    if (col && _this.get(patty[i]).type != 0 /* OUT_OF_BOUNDS */ && _this.get(patty[i]).isTangible()) {
-                        if (_this.get(patty[i]).value < _this.get(to[i]).value) {
-                            if (_this.get(bun[i]).type == 0 /* OUT_OF_BOUNDS */ || _this.get(bun[i]).value > _this.get(patty[i]).value) {
-                                skipPrune = true;
-                                _this.set(patty[i], new Tile(1 /* EMPTY */, -1));
-                                _this.modelSignals.crushed.dispatch(patty[i], direction);
-                                _this.recomputeAllBounds();
-                                _this.move(to[i], direction);
-                            }
-                            else {
-                                _this.move(patty[i], direction);
-                            }
-                        }
-                    }
-                });
-                if (!skipPrune)
-                    this.prune(to[0]);
-                this.recomputeAllBounds();
-            }
         };
         Square.prototype.prune = function (target) {
             var _this = this;
@@ -437,85 +376,6 @@ var Model;
                 var isCollision = cellIsOutofBounds || (!ignoreCollision && _this.get(cell).isTangible());
                 return isCollision;
             });
-        };
-        Square.prototype.recomputeAllBounds = function () {
-            var _this = this;
-            this.grid.forEach(function (t, i) {
-                if (t.isTangible()) {
-                    t.bounds = _this.computeBounds(_this.toCoords(i));
-                }
-            });
-        };
-        Square.prototype.getTileBoundInDirection = function (c, dir) {
-            var b = this.get(c).bounds;
-            switch (dir) {
-                case 0 /* NORTH */: return new CartesianCoords(c.x, b.n);
-                case 2 /* SOUTH */: return new CartesianCoords(c.x, b.s);
-                case 3 /* WEST */: return new CartesianCoords(b.w, c.y);
-                case 1 /* EAST */: return new CartesianCoords(b.e, c.y);
-            }
-        };
-        Square.prototype.computeBounds = function (c) {
-            var group = this.floodAcquire(c);
-            var i = -1;
-            for (var i = 0; i < group.length; i++) {
-                if (JSON.stringify(group[i]) == JSON.stringify(c)) {
-                    break;
-                }
-            }
-            var dest;
-            var future;
-            function resetDestFuture() {
-                dest = group.map(Utils.deepCopy);
-                future = dest.map(Utils.deepCopy);
-            }
-            resetDestFuture();
-            var bounds = new CartesianBounds();
-            var n = new CartesianCoords(0, -1);
-            var s = new CartesianCoords(0, 1);
-            var w = new CartesianCoords(-1, 0);
-            var e = new CartesianCoords(1, 0);
-            while (this.checkCollision(group, future).every(function (col) {
-                return col == false;
-            })) {
-                dest = future.map(Utils.deepCopy);
-                future = dest.map(function (c) {
-                    return c.displace(n);
-                });
-            }
-            bounds.n = dest[i].y;
-            resetDestFuture();
-            while (this.checkCollision(group, future).every(function (col) {
-                return col == false;
-            })) {
-                dest = future.map(Utils.deepCopy);
-                future = dest.map(function (c) {
-                    return c.displace(s);
-                });
-            }
-            bounds.s = dest[i].y;
-            resetDestFuture();
-            while (this.checkCollision(group, future).every(function (col) {
-                return col == false;
-            })) {
-                dest = future.map(Utils.deepCopy);
-                future = dest.map(function (c) {
-                    return c.displace(w);
-                });
-            }
-            bounds.w = dest[i].x;
-            resetDestFuture();
-            while (this.checkCollision(group, future).every(function (col) {
-                return col == false;
-            })) {
-                dest = future.map(Utils.deepCopy);
-                future = dest.map(function (c) {
-                    return c.displace(e);
-                });
-            }
-            bounds.e = dest[i].x;
-            resetDestFuture();
-            return bounds;
         };
         Square.prototype.insert = function (dim, index, data) {
             if (dim == 0 /* X */ && index > this.gridw || dim == 1 /* Y */ && index > this.gridh)
@@ -632,7 +492,6 @@ var Model;
                     }
                 }
             }
-            this.recomputeAllBounds();
         };
         Square.prototype.debugPrint = function (plain) {
             var _this = this;
@@ -1479,33 +1338,6 @@ var View;
             }).after(function () {
                 _this.viewSignals.animationFinished.dispatch();
                 doneCallback();
-            });
-        };
-        SquareView.prototype.indicateTurn = function (canvas, yourTurn) {
-            var target = canvas.group();
-            target.attr({ 'opacity': 0 });
-            var text = null;
-            var cellSz = this.getCellSize();
-            var gridDim = new TSM.vec2([cellSz.w * this.model.gridw, cellSz.h * this.model.gridh]);
-            if (yourTurn) {
-                text = target.plain("Your Turn");
-                target.translate(this.playableRect.x + this.gridOffset.x + gridDim.x / 2, this.playableRect.y + this.gridOffset.y + gridDim.y + 40);
-            }
-            else {
-                text = target.plain("Opponent's Turn");
-                target.translate(this.playableRect.x + this.gridOffset.x + gridDim.x / 2, this.playableRect.y + this.gridOffset.y - 30);
-            }
-            text.attr({ 'fill': '#000', 'font-size': 30, 'text-anchor': 'middle' });
-            target.animate(1000, '>', 0).during(function (t) {
-                var opacity = SVG.easing.quadIn(t);
-                target.attr({ 'opacity': opacity });
-            }).after(function () {
-                target.animate(1000, '>', 1500).during(function (t) {
-                    var opacity = 1 - SVG.easing.quadOut(t);
-                    target.attr({ 'opacity': opacity });
-                }).after(function () {
-                    target.remove();
-                });
             });
         };
         SquareView.prototype.queueAnimation = function (anims) {

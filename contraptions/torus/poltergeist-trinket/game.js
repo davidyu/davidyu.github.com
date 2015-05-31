@@ -164,26 +164,17 @@ var CartesianCoords = (function () {
     };
     return CartesianCoords;
 })();
-var CartesianBounds = (function () {
-    function CartesianBounds(n, e, s, w) {
-        this.n = n != undefined ? n : -1;
-        this.e = e != undefined ? e : -1;
-        this.s = s != undefined ? s : -1;
-        this.w = w != undefined ? s : -1;
-    }
-    return CartesianBounds;
-})();
 var Tile = (function () {
-    function Tile(t, v) {
+    function Tile(t, v, l) {
         this.type = t;
         this.value = v;
-        this.bounds = new CartesianBounds();
+        this.letter = l;
     }
     Tile.prototype.toString = function () {
         return this.value.toString();
     };
     Tile.prototype.isTangible = function () {
-        return this.type != 1 /* EMPTY */;
+        return this.type != 1 /* EMPTY */ && this.type != 0 /* OUT_OF_BOUNDS */;
     };
     return Tile;
 })();
@@ -227,17 +218,16 @@ var Model;
             {
                 tiles = lyt.map(function (n) {
                     if (n != 0) {
-                        return new Tile(2 /* REGULAR */, n);
+                        return new Tile(2 /* REGULAR */, n, "");
                     }
                     else {
-                        return new Tile(1 /* EMPTY */, -1);
+                        return new Tile(1 /* EMPTY */, 0, "");
                     }
                 });
                 if (flip)
                     tiles.reverse();
             }
             this.grid = tiles;
-            this.recomputeAllBounds();
         };
         Square.prototype.toFlat = function (x, y) {
             return x + y * this.gridw;
@@ -353,29 +343,11 @@ var Model;
                 return _this.get(c);
             });
             to.forEach(function (t, i) {
-                _this.set(t, new Tile(cachedGroupTiles[i].type, cachedGroupTiles[i].value));
+                _this.set(t, new Tile(cachedGroupTiles[i].type, cachedGroupTiles[i].value, cachedGroupTiles[i].letter));
             });
         };
         Square.prototype.prune = function (target) {
-            var _this = this;
-            console.log("may prune at " + target);
-            var startTile = this.get(target);
-            if (!startTile.isTangible())
-                return;
-            var targets = this.floodAcquire(target);
-            if (targets.length >= startTile.value) {
-                var str = "pruning: ";
-                targets.forEach(function (t) {
-                    str += _this.get(t).value + " ";
-                });
-                console.log(str);
-                this.modelSignals.deleted.dispatch(targets);
-                targets.forEach(function (t, i) {
-                    _this.set(t, new Tile(1 /* EMPTY */, -1));
-                });
-                console.log("after prune:");
-                console.log(this.debugPrint());
-            }
+            console.log("IMPLEMENT ME");
         };
         Square.prototype.checkCollision = function (from, future) {
             var _this = this;
@@ -387,85 +359,6 @@ var Model;
                 var isCollision = cellIsOutofBounds || (!ignoreCollision && _this.get(cell).isTangible());
                 return isCollision;
             });
-        };
-        Square.prototype.recomputeAllBounds = function () {
-            var _this = this;
-            this.grid.forEach(function (t, i) {
-                if (t.isTangible()) {
-                    t.bounds = _this.computeBounds(_this.toCoords(i));
-                }
-            });
-        };
-        Square.prototype.getTileBoundInDirection = function (c, dir) {
-            var b = this.get(c).bounds;
-            switch (dir) {
-                case 0 /* NORTH */: return new CartesianCoords(c.x, b.n);
-                case 2 /* SOUTH */: return new CartesianCoords(c.x, b.s);
-                case 3 /* WEST */: return new CartesianCoords(b.w, c.y);
-                case 1 /* EAST */: return new CartesianCoords(b.e, c.y);
-            }
-        };
-        Square.prototype.computeBounds = function (c) {
-            var group = this.floodAcquire(c);
-            var i = -1;
-            for (var i = 0; i < group.length; i++) {
-                if (JSON.stringify(group[i]) == JSON.stringify(c)) {
-                    break;
-                }
-            }
-            var dest;
-            var future;
-            function resetDestFuture() {
-                dest = group.map(Utils.deepCopy);
-                future = dest.map(Utils.deepCopy);
-            }
-            resetDestFuture();
-            var bounds = new CartesianBounds();
-            var n = new CartesianCoords(0, -1);
-            var s = new CartesianCoords(0, 1);
-            var w = new CartesianCoords(-1, 0);
-            var e = new CartesianCoords(1, 0);
-            while (this.checkCollision(group, future).every(function (col) {
-                return col == false;
-            })) {
-                dest = future.map(Utils.deepCopy);
-                future = dest.map(function (c) {
-                    return c.displace(n);
-                });
-            }
-            bounds.n = dest[i].y;
-            resetDestFuture();
-            while (this.checkCollision(group, future).every(function (col) {
-                return col == false;
-            })) {
-                dest = future.map(Utils.deepCopy);
-                future = dest.map(function (c) {
-                    return c.displace(s);
-                });
-            }
-            bounds.s = dest[i].y;
-            resetDestFuture();
-            while (this.checkCollision(group, future).every(function (col) {
-                return col == false;
-            })) {
-                dest = future.map(Utils.deepCopy);
-                future = dest.map(function (c) {
-                    return c.displace(w);
-                });
-            }
-            bounds.w = dest[i].x;
-            resetDestFuture();
-            while (this.checkCollision(group, future).every(function (col) {
-                return col == false;
-            })) {
-                dest = future.map(Utils.deepCopy);
-                future = dest.map(function (c) {
-                    return c.displace(e);
-                });
-            }
-            bounds.e = dest[i].x;
-            resetDestFuture();
-            return bounds;
         };
         Square.prototype.insert = function (dim, index, data) {
             if (dim == 0 /* X */ && index > this.gridw || dim == 1 /* Y */ && index > this.gridh)
@@ -522,67 +415,29 @@ var Model;
             }
             this.size = this.gridw * this.gridh;
         };
-        Square.prototype.genHalf = function (startY, endY, min, max) {
-            var count = [];
-            for (var i = startY * this.gridw; i < (endY) * this.gridw; i++) {
-                var val = Math.round(Math.random() * (max - min) + min);
-                this.setFlat(i, new Tile(2 /* REGULAR */, val));
-                if (count[val] == null) {
-                    count[val] = 0;
-                }
-                count[val]++;
-            }
-            for (i = startY * this.gridw; i < endY * this.gridw; i++) {
-                if (Math.random() > 0.4) {
-                    if (count[this.getFlat(i).value] > this.getFlat(i).value) {
-                        count[this.getFlat(i).value]--;
-                        this.setFlat(i, new Tile(1 /* EMPTY */, -1));
-                    }
-                }
-            }
-            for (i = min; i <= max; i++) {
-                if (count[i] > i) {
-                    for (var j = 0; j < this.getTileArray().length && count[i] > i; j++) {
-                        if (this.getFlat(j).value == i) {
-                            this.setFlat(j, new Tile(1 /* EMPTY */, -1));
-                            count[i]--;
-                        }
-                    }
-                }
-            }
-            for (i = 2; i <= max; i++) {
-                if (count[i] < i) {
-                    while (count[i] < i) {
-                        var randIndex = Math.round(Math.random() * ((endY - startY) * this.gridw)) + startY * this.gridw;
-                        if (this.isEmpty(randIndex)) {
-                            this.setFlat(randIndex, new Tile(2 /* REGULAR */, i));
-                            count[i]++;
-                        }
-                    }
-                }
-            }
-        };
-        Square.prototype.procGenGrid = function (min, max) {
+        Square.prototype.procGenGrid = function (min, max, words) {
             var maxCount = 4;
-            var candidates = [];
+            var values = [];
             for (var i = min; i <= max; i++) {
-                candidates.push(i);
+                values.push(i);
             }
-            var counter = [];
-            counter = candidates.map(function (_) {
-                return maxCount;
+            var letters = values.map(function (_, i) {
+                return words[i].split("");
             });
             for (var y = 0; y < this.gridh; y++) {
                 for (var x = 0; x < this.gridw; x++) {
                     var coords = new CartesianCoords(x, y);
-                    var index = Math.floor(Math.random() * candidates.length);
-                    if (index == candidates.length)
-                        index = candidates.length - 1;
-                    this.set(coords, new Tile(2 /* REGULAR */, candidates[index]));
-                    counter[index]--;
-                    if (counter[index] == 0) {
-                        candidates.splice(index, 1);
-                        counter.splice(index, 1);
+                    var index = Math.floor(Math.random() * values.length);
+                    if (index == values.length)
+                        index = values.length - 1;
+                    console.log(index);
+                    var charIndex = Math.floor(Math.random() * letters[index].length);
+                    var character = letters[index][charIndex];
+                    letters[index].splice(charIndex, 1);
+                    this.set(coords, new Tile(2 /* REGULAR */, values[index], character));
+                    if (letters[index].length == 0) {
+                        values.splice(index, 1);
+                        letters.splice(index, 1);
                     }
                 }
             }
@@ -823,8 +678,12 @@ var View;
             var d = dst;
             d.e = Utils.deepCopy(s.e);
             d.rect.attr({ 'fill': s.rect.attr('fill') });
+            var cellw = this.getCellSize().w, cellh = this.getCellSize().h;
+            d.text.font({ size: cellh / 4 });
+            d.text.tspan(d.e.letter).dy('0.5ex').dx('-0.5ex').attr({ 'fill': this.colorizer.foregroundFromColor(this.colorizer.fromTile(d.e)) });
         };
         SquareView.prototype.drawTile = function (canvas, x, y, e, dragOffset) {
+            var _this = this;
             var cellw = this.getCellSize().w, cellh = this.getCellSize().h;
             var xOffset = cellw / 2 + Math.floor(this.playableRect.x + this.gridOffset.x);
             var yOffset = cellh / 2 + Math.floor(this.playableRect.y + this.gridOffset.y);
@@ -837,8 +696,12 @@ var View;
                 }, "");
                 var rect = cell.polygon(ptstr);
                 rect.attr({ 'fill': this.colorizer.fromTile(e), 'fill-opacity': e.isTangible() ? 1 : 0 });
+                var text = cell.text(function (txt) {
+                    txt.tspan(e.letter).dy('0.5ex').dx('-0.5ex').attr({ 'fill': _this.colorizer.foregroundFromColor(_this.colorizer.fromTile(e)) });
+                }).font({ size: cellh / 4 });
                 cell.coords = new CartesianCoords(x, y);
                 cell.rect = rect;
+                cell.text = text;
                 cell.e = e;
                 cell.cannonicalTransform = { x: x * cellw + xOffset, y: y * cellh + yOffset };
                 cell.translateTarget = { x: x * cellw + xOffset, y: y * cellh + yOffset };
@@ -860,9 +723,7 @@ var View;
                 case 0 /* CANVAS */:
                     break;
                 case 1 /* SVG */:
-                    if (this.cells.length != this.model.size) {
-                        canvas.clear();
-                    }
+                    canvas.clear();
                     break;
             }
             var cellSz = this.getCellSize();
@@ -887,6 +748,9 @@ var View;
             }
             if (this.clipper == null) {
                 this.clipper = canvas.clip().rect(gridDim.x, gridDim.y).move(this.playableRect.x + this.gridOffset.x, this.playableRect.y + this.gridOffset.y);
+            }
+            else {
+                this.clipper.size(gridDim.x, gridDim.y).move(this.playableRect.x + this.gridOffset.x, this.playableRect.y + this.gridOffset.y);
             }
             this.board = canvas.group();
             for (var y = 0; y < this.model.gridh; y++) {
@@ -1145,33 +1009,6 @@ var View;
                 doneCallback();
             });
         };
-        SquareView.prototype.indicateTurn = function (canvas, yourTurn) {
-            var target = canvas.group();
-            target.attr({ 'opacity': 0 });
-            var text = null;
-            var cellSz = this.getCellSize();
-            var gridDim = new TSM.vec2([cellSz.w * this.model.gridw, cellSz.h * this.model.gridh]);
-            if (yourTurn) {
-                text = target.plain("Your Turn");
-                target.translate(this.playableRect.x + this.gridOffset.x + gridDim.x / 2, this.playableRect.y + this.gridOffset.y + gridDim.y + 40);
-            }
-            else {
-                text = target.plain("Opponent's Turn");
-                target.translate(this.playableRect.x + this.gridOffset.x + gridDim.x / 2, this.playableRect.y + this.gridOffset.y - 30);
-            }
-            text.attr({ 'fill': '#000', 'font-size': 30, 'text-anchor': 'middle' });
-            target.animate(1000, '>', 0).during(function (t) {
-                var opacity = SVG.easing.quadIn(t);
-                target.attr({ 'opacity': opacity });
-            }).after(function () {
-                target.animate(1000, '>', 1500).during(function (t) {
-                    var opacity = 1 - SVG.easing.quadOut(t);
-                    target.attr({ 'opacity': opacity });
-                }).after(function () {
-                    target.remove();
-                });
-            });
-        };
         SquareView.prototype.queueAnimation = function (anims) {
             console.log("received signal for animations: " + anims);
             if (this.animQ.length == 0 && !this.animating) {
@@ -1368,6 +1205,10 @@ var SquareGame = (function () {
             dragAnchor: null,
             lockedDragDirection: null
         };
+        gp.level.words.splice(Math.min(gp.level.gridw, gp.level.gridh));
+        gp.level.words.map(function (word) {
+            return word.substr(0, Math.min(gp.level.gridw, gp.level.gridh) - 1);
+        });
         this.gameParams = gp;
         this.gameState = gs;
         var tr = {
@@ -1380,7 +1221,7 @@ var SquareGame = (function () {
             })()
         };
         this.tracker = tr;
-        this.model = new Model.Square(this.gameParams.level.gridw, this.gameParams.level.gridh, this.gameParams.level.maxGridw, this.gameParams.level.maxGridh, new Tile(1 /* EMPTY */, 0), new Tile(0 /* OUT_OF_BOUNDS */, -1));
+        this.model = new Model.Square(this.gameParams.level.gridw, this.gameParams.level.gridh, this.gameParams.level.maxGridw, this.gameParams.level.maxGridh, new Tile(1 /* EMPTY */, 0, ""), new Tile(0 /* OUT_OF_BOUNDS */, 0, ""));
         if (gp.level.layout == null) {
             this.procGenGrid(this.model, gp, this.tracker);
         }
@@ -1425,7 +1266,6 @@ var SquareGame = (function () {
         console.log(this.model);
         if (this.gameSignals != null)
             this.gameSignals.updated.dispatch(this.debugPrintModelForLevelEditor(), this.model.gridw, this.model.gridh);
-        this.model.recomputeAllBounds();
         if (this.clearedStage()) {
             if (this.gameParams.gameType == 0 /* SURVIVAL */) {
                 alert("Holy crap you beat survival mode! How is that even possible. Let's see you do it again.");
@@ -1447,7 +1287,7 @@ var SquareGame = (function () {
         if (gp.gameType == 0 /* SURVIVAL */) {
         }
         else {
-            this.model.procGenGrid(MIN_VAL, gp.level.maxVal);
+            this.model.procGenGrid(MIN_VAL, gp.level.maxVal, gp.level.words);
         }
     };
     SquareGame.prototype.justMove = function (group, direction, steps) {
@@ -1545,6 +1385,8 @@ var SquareGame = (function () {
     };
     SquareGame.prototype.midDrag = function (e) {
         var _this = this;
+        if (this.gameState.dragAnchor == null)
+            return;
         var moveVector = new CartesianCoords(0, 0);
         var moved = false;
         var deadzone = this.view.getCellSize().w / 8;
@@ -1604,7 +1446,7 @@ var SquareGame = (function () {
             this.gameState.dragAnchor = null;
         }
         var cellSz = this.view.getCellSize();
-        this.phantomCell = this.view.drawTile(this.view.board, this.model.gridw * cellSz.w, this.model.gridh * cellSz.h, new Tile(2 /* REGULAR */, 0), new TSM.vec2([0, 0]));
+        this.phantomCell = this.view.drawTile(this.view.board, this.model.gridw * cellSz.w, this.model.gridh * cellSz.h, new Tile(2 /* REGULAR */, 0, ""), new TSM.vec2([0, 0]));
     };
     SquareGame.prototype.resolveDrag = function (e) {
         var _this = this;
@@ -1613,7 +1455,7 @@ var SquareGame = (function () {
             this.gameState.dragUpdateID = null;
         }
         if (this.gameState.selected == null || this.gameState.selected.length == 0) {
-            console.log("nothing selected; or trying to move tiles that don't belong to you...");
+            console.log("nothing selected...");
             return;
         }
         var moveDirection;
@@ -1741,30 +1583,9 @@ var SquareGame = (function () {
         }
     };
     SquareGame.prototype.prune = function (start) {
-        var _this = this;
-        console.log("pruning at " + start);
-        var startTile = this.model.get(start);
-        if (!startTile.isTangible())
-            return;
-        var targets = this.model.floodAcquire(start);
-        if (targets.length >= startTile.value) {
-            console.log("pruning " + targets.length + " tiles");
-            var str = "";
-            targets.forEach(function (t) {
-                str += _this.model.get(t).value + " ";
-            });
-            console.log(str);
-            this.view.pop(this.canvas, targets, function () {
-                targets.forEach(function (t, i) {
-                    _this.tracker.tiles[startTile.value]--;
-                    _this.model.set(t, new Tile(1 /* EMPTY */, -1));
-                });
-                _this.gameState.lastCleared = startTile.value;
-            });
-        }
+        console.log("IMPLEMENT ME");
     };
     SquareGame.prototype.simpleSlide = function (from, direction, doneCallback, numSlides) {
-        var _this = this;
         if (doneCallback === void 0) { doneCallback = null; }
         if (numSlides === void 0) { numSlides = 1; }
         var to = from.map(function (c) {
@@ -1773,7 +1594,6 @@ var SquareGame = (function () {
         this.view.slide(this.canvas, from, to, function () {
             if (doneCallback != null)
                 doneCallback();
-            _this.model.recomputeAllBounds();
         });
     };
     SquareGame.prototype.spawn = function (tileLine, side) {
@@ -2028,7 +1848,8 @@ var ModeSelect = (function () {
                 gridw: 4,
                 gridh: 4,
                 layout: null,
-                respawnInterval: 5
+                respawnInterval: 5,
+                words: ["FACE", "LIAR", "HAHA", "JERK"]
             },
             gameType: 1 /* PUZZLE */,
             drawBackend: 1 /* SVG */
